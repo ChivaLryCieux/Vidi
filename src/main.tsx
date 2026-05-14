@@ -75,8 +75,6 @@ type SessionMetric = {
 
 const rawSessions = [s1, s2, s3, s4, s5, s6, s7, s8] as RawSession[];
 
-const accent = "#80372b";
-
 function avg(values: number[]) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
@@ -370,7 +368,8 @@ function CourtView({ current }: { current: SessionMetric }) {
           <span>落点地图</span>
           <Target size={20} />
         </div>
-        <div className="court">
+        <div className="court-wrap">
+          <div className="court">
           <div className="court-line net" />
           <div className="court-line service-a" />
           <div className="court-line service-b" />
@@ -383,6 +382,7 @@ function CourtView({ current }: { current: SessionMetric }) {
               title={`${point.stroke} ${Math.round(point.speed)}km/h`}
             />
           ))}
+          </div>
         </div>
         <div className="legend">
           <span><i /> 有效落点</span>
@@ -417,7 +417,7 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
           <span>训练负荷矩阵</span>
           <Activity size={20} />
         </div>
-        <div className="load-grid">
+        <div className="load-grid" aria-label="训练负荷矩阵">
           {metrics.map((metric) => (
             <div
               key={metric.id}

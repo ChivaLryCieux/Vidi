@@ -16,12 +16,14 @@ html {
   color: var(--ink);
   font-family: Inter, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
   letter-spacing: 0;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     linear-gradient(var(--line) 1px, transparent 1px),
     linear-gradient(90deg, var(--line) 1px, transparent 1px),
@@ -36,13 +38,15 @@ input {
 
 button {
   color: var(--ink);
+  touch-action: manipulation;
 }
 
 .app-shell {
   width: min(100%, 1180px);
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0 auto;
-  padding: max(18px, env(safe-area-inset-top)) 14px calc(92px + env(safe-area-inset-bottom));
+  padding: max(14px, env(safe-area-inset-top)) 12px calc(94px + env(safe-area-inset-bottom));
+  overflow-x: clip;
 }
 
 .topbar,
@@ -60,7 +64,7 @@ button {
   align-items: center;
   justify-content: space-between;
   background: var(--paper);
-  padding: 14px;
+  padding: 12px;
 }
 
 .kicker {
@@ -78,8 +82,9 @@ h1 {
 
 .mark {
   display: grid;
-  width: 54px;
-  height: 54px;
+  flex: 0 0 auto;
+  width: 50px;
+  height: 50px;
   place-items: center;
   background: var(--accent);
   color: #fff;
@@ -92,7 +97,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   margin-top: 14px;
-  padding: 16px;
+  padding: 14px;
   background: var(--accent);
   color: #fff;
 }
@@ -119,18 +124,19 @@ h1 {
 }
 
 .session-rail {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin: 14px 0;
-  overflow-x: auto;
-  padding: 0 3px 5px 0;
+  padding: 0;
 }
 
 .session-rail button {
-  min-width: 68px;
-  padding: 10px 12px;
+  min-width: 0;
+  min-height: 50px;
+  padding: 10px 8px;
   background: var(--card);
-  text-align: left;
+  text-align: center;
 }
 
 .session-rail button.active,
@@ -161,13 +167,13 @@ h1 {
 
 .grid-view {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .card {
   min-width: 0;
   background: var(--card);
-  padding: 16px;
+  padding: 14px;
 }
 
 .summary-card {
@@ -182,6 +188,12 @@ h1 {
   margin-bottom: 14px;
   font-size: 13px;
   font-weight: 900;
+  min-width: 0;
+}
+
+.card-title span,
+.card-title strong {
+  min-width: 0;
 }
 
 .card-title strong,
@@ -198,7 +210,7 @@ h1 {
 .metric-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 7px;
   margin-top: 16px;
 }
 
@@ -218,7 +230,8 @@ h1 {
 
 .metric-row strong {
   margin-top: 4px;
-  font-size: 18px;
+  font-size: clamp(15px, 4.4vw, 18px);
+  overflow-wrap: anywhere;
 }
 
 .sparkline,
@@ -299,6 +312,7 @@ h1 {
   display: grid;
   gap: 5px;
   width: 100%;
+  min-height: 78px;
   padding: 14px;
   background: var(--card);
   text-align: left;
@@ -310,16 +324,26 @@ h1 {
 
 .timeline-card strong {
   font-size: 20px;
+  overflow-wrap: anywhere;
 }
 
 .timeline-card.active small {
   color: rgba(255, 255, 255, 0.75);
 }
 
+.court-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
 .court {
   position: relative;
-  width: 100%;
-  aspect-ratio: 0.52;
+  width: max(100%, 300px);
+  aspect-ratio: 0.56;
+  max-height: min(62dvh, 560px);
   overflow: hidden;
   background:
     linear-gradient(90deg, transparent calc(50% - 1px), rgba(0, 0, 0, 0.35) calc(50% - 1px), rgba(0, 0, 0, 0.35) calc(50% + 1px), transparent calc(50% + 1px)),
@@ -379,6 +403,7 @@ h1 {
 
 .legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
   margin-top: 12px;
   font-size: 12px;
@@ -399,7 +424,7 @@ h1 {
 
 .trajectory-stack {
   position: relative;
-  min-height: 190px;
+  min-height: clamp(150px, 42vw, 190px);
   overflow: hidden;
   background:
     linear-gradient(150deg, transparent 28%, rgba(0, 0, 0, 0.12) 28%, rgba(0, 0, 0, 0.12) 29%, transparent 29%),
@@ -439,6 +464,7 @@ h1 {
 
 .bar-row > div:first-child {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
 }
@@ -462,6 +488,9 @@ h1 {
   gap: 8px;
   min-height: 150px;
   border-bottom: 2px solid var(--ink);
+  overflow-x: auto;
+  padding-top: 6px;
+  overscroll-behavior-x: contain;
 }
 
 .load-grid div {
@@ -480,7 +509,7 @@ h1 {
 }
 
 .load-grid strong {
-  font-size: 18px;
+  font-size: clamp(14px, 4vw, 18px);
 }
 
 .recovery strong {
@@ -502,7 +531,7 @@ h1 {
 }
 
 .data-form input {
-  min-height: 46px;
+  min-height: 48px;
   border: 1px solid var(--ink);
   border-radius: 0;
   padding: 0 12px;
@@ -511,7 +540,7 @@ h1 {
 }
 
 .data-form button {
-  min-height: 50px;
+  min-height: 52px;
   border: 1px solid var(--ink);
   background: var(--accent);
   color: #fff;
@@ -522,11 +551,11 @@ h1 {
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 20;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  width: min(calc(100% - 28px), 560px);
+  width: min(calc(100% - 20px), 560px);
   transform: translateX(-50%);
   background: var(--card);
 }
@@ -534,7 +563,7 @@ h1 {
 .bottom-nav button {
   display: grid;
   min-width: 0;
-  min-height: 58px;
+  min-height: 60px;
   place-items: center;
   gap: 2px;
   border: 0;
@@ -570,6 +599,66 @@ h1 {
   }
 }
 
+@media (max-width: 380px) {
+  .app-shell {
+    padding-inline: 10px;
+  }
+
+  .topbar,
+  .hero-strip,
+  .card {
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .kicker {
+    font-size: 10px;
+  }
+
+  .mark {
+    width: 44px;
+    height: 44px;
+    font-size: 24px;
+  }
+
+  .hero-strip svg {
+    display: none;
+  }
+
+  .card-title {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .metric-row {
+    grid-template-columns: 1fr;
+  }
+
+  .session-rail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric-row div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .growth-chart {
+    min-height: 188px;
+  }
+
+  .load-grid {
+    grid-template-columns: repeat(8, 36px);
+  }
+
+  .bottom-nav button {
+    min-height: 56px;
+    font-size: 10px;
+  }
+}
+
 @media (min-width: 1040px) {
   .app-shell {
     display: grid;
@@ -590,13 +679,7 @@ h1 {
   }
 
   .session-rail {
-    flex-wrap: wrap;
-    align-content: start;
-    overflow: visible;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin: 0;
-  }
-
-  .session-rail button {
-    flex: 1 1 94px;
   }
 }
