@@ -18,6 +18,13 @@ src-tauri/gen/android/build/
 src-tauri/gen/apple/build/
 src-tauri/gen/apple/DerivedData/
 
+# Signing keys and packaged mobile artifacts
+*.keystore
+*.jks
+*.apk
+*.aab
+signing/
+
 # Logs
 *.log
 npm-debug.log*

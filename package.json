@@ -12,6 +12,7 @@
     "tauri:build": "tauri build",
     "tauri:android:init": "tauri android init",
     "tauri:android:dev": "tauri android dev",
+    "tauri:android:build": "tauri android build",
     "tauri:ios:init": "tauri ios init",
     "tauri:ios:dev": "tauri ios dev"
   },
