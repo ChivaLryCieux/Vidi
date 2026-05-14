@@ -1,0 +1,16 @@
+{
+  "session_id": "train_004",
+  "date": "2026-05-14T14:00:00Z",
+  "theme": "网前技术",
+  "total_shots": 1500,
+  "total_rallies": 154,
+  "player_shots": 749,
+  "player_mistakes": 134,
+  "actual_mistake_rate": 0.1789,
+  "expected_mistake_rate": 0.14,
+  "avg_shot_speed": 331.3,
+  "max_heart_rate": 152,
+  "progress_status": "突破期",
+  "energy_factor": 1.026,
+  "interval_factor": 1.0
+}

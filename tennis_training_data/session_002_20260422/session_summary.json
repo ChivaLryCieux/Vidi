@@ -1,0 +1,16 @@
+{
+  "session_id": "train_002",
+  "date": "2026-04-22T18:00:00Z",
+  "theme": "正手强化",
+  "total_shots": 1500,
+  "total_rallies": 162,
+  "player_shots": 749,
+  "player_mistakes": 141,
+  "actual_mistake_rate": 0.1883,
+  "expected_mistake_rate": 0.17,
+  "avg_shot_speed": 290.5,
+  "max_heart_rate": 156,
+  "progress_status": "平台期",
+  "energy_factor": 0.996,
+  "interval_factor": 1.01
+}

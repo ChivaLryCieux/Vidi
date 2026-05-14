@@ -1,0 +1,16 @@
+{
+  "session_id": "train_007",
+  "date": "2026-06-18T14:00:00Z",
+  "theme": "战术组合",
+  "total_shots": 1500,
+  "total_rallies": 132,
+  "player_shots": 748,
+  "player_mistakes": 95,
+  "actual_mistake_rate": 0.127,
+  "expected_mistake_rate": 0.11,
+  "avg_shot_speed": 545.1,
+  "max_heart_rate": 146,
+  "progress_status": "突破期",
+  "energy_factor": 0.958,
+  "interval_factor": 1.01
+}

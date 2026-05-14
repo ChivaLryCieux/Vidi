@@ -1,0 +1,16 @@
+{
+  "session_id": "train_006",
+  "date": "2026-06-04T14:00:00Z",
+  "theme": "移动步伐",
+  "total_shots": 1500,
+  "total_rallies": 151,
+  "player_shots": 749,
+  "player_mistakes": 127,
+  "actual_mistake_rate": 0.1696,
+  "expected_mistake_rate": 0.13,
+  "avg_shot_speed": 366.9,
+  "max_heart_rate": 149,
+  "progress_status": "平台期",
+  "energy_factor": 1.072,
+  "interval_factor": 1.0
+}

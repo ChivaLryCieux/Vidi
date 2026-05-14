@@ -1,0 +1,16 @@
+{
+  "session_id": "train_003",
+  "date": "2026-05-08T14:00:00Z",
+  "theme": "反手强化",
+  "total_shots": 1500,
+  "total_rallies": 192,
+  "player_shots": 749,
+  "player_mistakes": 162,
+  "actual_mistake_rate": 0.2163,
+  "expected_mistake_rate": 0.17,
+  "avg_shot_speed": 246.0,
+  "max_heart_rate": 155,
+  "progress_status": "平台期",
+  "energy_factor": 1.023,
+  "interval_factor": 1.02
+}

@@ -1,0 +1,16 @@
+{
+  "session_id": "train_001",
+  "date": "2026-04-11T14:00:00Z",
+  "theme": "全面评估",
+  "total_shots": 1500,
+  "total_rallies": 174,
+  "player_shots": 748,
+  "player_mistakes": 150,
+  "actual_mistake_rate": 0.2005,
+  "expected_mistake_rate": 0.18,
+  "avg_shot_speed": 260.1,
+  "max_heart_rate": 158,
+  "progress_status": "初始水平",
+  "energy_factor": 1.064,
+  "interval_factor": 1.0
+}

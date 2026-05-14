@@ -1,0 +1,16 @@
+{
+  "session_id": "train_005",
+  "date": "2026-05-26T18:00:00Z",
+  "theme": "发球接发",
+  "total_shots": 1500,
+  "total_rallies": 132,
+  "player_shots": 749,
+  "player_mistakes": 103,
+  "actual_mistake_rate": 0.1375,
+  "expected_mistake_rate": 0.13,
+  "avg_shot_speed": 463.1,
+  "max_heart_rate": 150,
+  "progress_status": "平台期",
+  "energy_factor": 0.912,
+  "interval_factor": 1.01
+}
