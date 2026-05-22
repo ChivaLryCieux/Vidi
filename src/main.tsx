@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Activity, ArrowDownUp, Dumbbell, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy } from "lucide-react";
+import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy } from "lucide-react";
 import s1 from "../tennis_training_data/session_001_20260411/training_data.json";
 import s2 from "../tennis_training_data/session_002_20260422/training_data.json";
 import s3 from "../tennis_training_data/session_003_20260508/training_data.json";
@@ -73,6 +73,12 @@ type SessionMetric = {
   trajectories: { points: { x: number; y: number; height_m: number }[]; stroke: string }[];
 };
 
+type TimestampBadge = {
+  id: string;
+  timestamp: number;
+};
+
+const badgeStorageKey = "vidi.timestamp-badges";
 const rawSessions = [s1, s2, s3, s4, s5, s6, s7, s8] as RawSession[];
 
 function avg(values: number[]) {
@@ -159,6 +165,7 @@ const navItems = [
   { id: "growth", label: "成长", icon: LineChart },
   { id: "court", label: "球场", icon: Target },
   { id: "load", label: "负荷", icon: Activity },
+  { id: "badges", label: "徽章", icon: CircleUserRound },
   { id: "input", label: "录入", icon: Plus },
 ] as const;
 
@@ -244,6 +251,7 @@ function App() {
         {view === "growth" && <Growth metrics={metrics} selected={selected} onSelect={setSelected} />}
         {view === "court" && <CourtView current={current} />}
         {view === "load" && <LoadView current={current} metrics={metrics} />}
+        {view === "badges" && <BadgeView />}
         {view === "input" && <InputView onAdd={addManualSession} latest={latest} />}
       </section>
 
@@ -456,6 +464,69 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
   );
 }
 
+function BadgeView() {
+  const [badges, setBadges] = React.useState<TimestampBadge[]>(readBadges);
+  const latest = badges[0];
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(badgeStorageKey, JSON.stringify(badges));
+    } catch {
+      // Local persistence can be disabled by the host webview.
+    }
+  }, [badges]);
+
+  function addBadge() {
+    const timestamp = Date.now();
+    setBadges((items) => [{ id: `${timestamp}-${items.length}`, timestamp }, ...items].slice(0, 80));
+  }
+
+  return (
+    <div className="grid-view">
+      <Card className="badge-studio wide-card">
+        <div className="card-title">
+          <span>时间戳圆形徽章</span>
+          <CircleUserRound size={20} />
+        </div>
+        <div className="badge-studio-body">
+          <div className="badge-preview">
+            {latest ? <BadgeMark badge={latest} /> : <span className="badge-placeholder" aria-hidden="true" />}
+          </div>
+          <div className="badge-actions">
+            <strong>{latest ? `#${latest.timestamp}` : "新徽章"}</strong>
+            <p className="muted">{latest ? formatMoment(latest.timestamp) : "等待时间签名"}</p>
+            <button type="button" onClick={addBadge}>
+              <Plus size={20} />
+              <span>生成徽章</span>
+            </button>
+          </div>
+        </div>
+      </Card>
+      <Card className="wide-card">
+        <div className="card-title">
+          <span>本地徽章库</span>
+          <span>{badges.length} 枚</span>
+        </div>
+        {badges.length ? (
+          <div className="badge-grid" aria-label="本地生成徽章">
+            {badges.map((badge) => (
+              <figure key={badge.id} className="badge-tile">
+                <BadgeMark badge={badge} />
+                <figcaption>
+                  <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                  <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">当前设备还没有保留的徽章。</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function InputView({ onAdd, latest }: { onAdd: (form: FormData) => void; latest: SessionMetric }) {
   return (
     <div className="grid-view">
@@ -611,6 +682,111 @@ function TrajectoryStack({ trajectories }: { trajectories: SessionMetric["trajec
       })}
     </div>
   );
+}
+
+function BadgeMark({ badge }: { badge: TimestampBadge }) {
+  const pattern = createBadgePattern(badge.timestamp);
+
+  return (
+    <svg className="badge-mark" viewBox="0 0 120 120" role="img" aria-label={`时间戳 ${badge.timestamp} 生成的徽章`}>
+      <defs>
+        <clipPath id={`badge-clip-${badge.id}`}>
+          <circle cx="60" cy="60" r="54" />
+        </clipPath>
+        <linearGradient id={`badge-bg-${badge.id}`} x1="20%" y1="8%" x2="82%" y2="94%">
+          <stop offset="0%" stopColor={pattern.backgroundLight} />
+          <stop offset="100%" stopColor={pattern.background} />
+        </linearGradient>
+      </defs>
+      <circle cx="60" cy="60" r="56" className="badge-ring" />
+      <g clipPath={`url(#badge-clip-${badge.id})`}>
+        <rect width="120" height="120" fill={`url(#badge-bg-${badge.id})`} />
+        <circle cx="36" cy="28" r="40" fill="rgba(255, 255, 255, 0.24)" />
+        {pattern.cells.map((cell) => (
+          <rect
+            key={`${cell.x}-${cell.y}`}
+            x={cell.x}
+            y={cell.y}
+            width="14"
+            height="14"
+            rx="3"
+            fill={pattern.foreground}
+          />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+function readBadges(): TimestampBadge[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as unknown;
+    if (!Array.isArray(stored)) {
+      return [];
+    }
+
+    return stored.filter(isTimestampBadge).slice(0, 80);
+  } catch {
+    return [];
+  }
+}
+
+function isTimestampBadge(value: unknown): value is TimestampBadge {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    typeof (value as TimestampBadge).id === "string" &&
+    typeof (value as TimestampBadge).timestamp === "number",
+  );
+}
+
+function createBadgePattern(timestamp: number) {
+  let state = mixSeed(timestamp);
+  const next = () => {
+    state = Math.imul(state ^ (state >>> 15), 2246822519);
+    state = Math.imul(state ^ (state >>> 13), 3266489917);
+    return ((state ^= state >>> 16) >>> 0) / 4294967296;
+  };
+  const hue = Math.floor(78 + next() * 86);
+  const cells: { x: number; y: number }[] = [];
+
+  for (let row = 0; row < 5; row += 1) {
+    for (let column = 0; column < 3; column += 1) {
+      if (next() > 0.45) {
+        const mirrored = 4 - column;
+        cells.push({ x: 18 + column * 17, y: 18 + row * 17 });
+        if (mirrored !== column) {
+          cells.push({ x: 18 + mirrored * 17, y: 18 + row * 17 });
+        }
+      }
+    }
+  }
+
+  if (!cells.length) {
+    cells.push({ x: 52, y: 52 });
+  }
+
+  return {
+    background: `hsl(${hue} 62% 78%)`,
+    backgroundLight: `hsl(${hue + 18} 88% 94%)`,
+    foreground: `hsl(${Math.max(94, hue - 26)} 64% 28%)`,
+    cells,
+  };
+}
+
+function mixSeed(timestamp: number) {
+  return Math.imul(timestamp ^ (timestamp >>> 16), 2654435761) >>> 0;
+}
+
+function formatMoment(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
