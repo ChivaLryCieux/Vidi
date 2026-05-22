@@ -710,13 +710,39 @@ h1 {
   display: block;
   aspect-ratio: 1;
   overflow: visible;
-  filter: drop-shadow(0 15px 18px rgba(19, 50, 31, 0.18));
+  filter: drop-shadow(0 16px 22px rgba(19, 50, 31, 0.16));
 }
 
 .badge-ring {
-  fill: rgba(255, 255, 251, 0.7);
+  fill: rgba(255, 255, 251, 0.68);
   stroke: rgba(255, 255, 255, 0.92);
   stroke-width: 4;
+}
+
+.badge-river {
+  fill: none;
+  stroke: rgba(242, 255, 224, 0.56);
+  stroke-linecap: round;
+  mix-blend-mode: screen;
+}
+
+.badge-river-highlight {
+  fill: none;
+  stroke: rgba(255, 255, 251, 0.64);
+  stroke-linecap: round;
+  mix-blend-mode: screen;
+}
+
+.badge-sheen {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.62);
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+
+.badge-glint {
+  fill: rgba(255, 255, 247, 0.82);
+  filter: blur(0.5px);
 }
 
 .data-form {

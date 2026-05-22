@@ -693,26 +693,54 @@ function BadgeMark({ badge }: { badge: TimestampBadge }) {
         <clipPath id={`badge-clip-${badge.id}`}>
           <circle cx="60" cy="60" r="54" />
         </clipPath>
-        <linearGradient id={`badge-bg-${badge.id}`} x1="20%" y1="8%" x2="82%" y2="94%">
-          <stop offset="0%" stopColor={pattern.backgroundLight} />
-          <stop offset="100%" stopColor={pattern.background} />
+        <linearGradient id={`badge-bg-${badge.id}`} x1={`${pattern.angle}%`} y1="4%" x2={`${100 - pattern.angle}%`} y2="100%">
+          <stop offset="0%" stopColor={pattern.mint} />
+          <stop offset="48%" stopColor={pattern.green} />
+          <stop offset="100%" stopColor={pattern.deep} />
         </linearGradient>
+        <radialGradient id={`badge-glow-${badge.id}`} cx={`${pattern.glow.x}%`} cy={`${pattern.glow.y}%`} r="68%">
+          <stop offset="0%" stopColor={pattern.glow.color} stopOpacity="0.92" />
+          <stop offset="56%" stopColor={pattern.glow.color} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={pattern.glow.color} stopOpacity="0" />
+        </radialGradient>
+        <filter id={`badge-soft-${badge.id}`} x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="9" />
+        </filter>
       </defs>
       <circle cx="60" cy="60" r="56" className="badge-ring" />
       <g clipPath={`url(#badge-clip-${badge.id})`}>
         <rect width="120" height="120" fill={`url(#badge-bg-${badge.id})`} />
-        <circle cx="36" cy="28" r="40" fill="rgba(255, 255, 255, 0.24)" />
-        {pattern.cells.map((cell) => (
-          <rect
-            key={`${cell.x}-${cell.y}`}
-            x={cell.x}
-            y={cell.y}
-            width="14"
-            height="14"
-            rx="3"
-            fill={pattern.foreground}
+        <rect width="120" height="120" fill={`url(#badge-glow-${badge.id})`} />
+        {pattern.blooms.map((bloom, index) => (
+          <ellipse
+            key={`${bloom.x}-${bloom.y}-${index}`}
+            cx={bloom.x}
+            cy={bloom.y}
+            rx={bloom.rx}
+            ry={bloom.ry}
+            fill={bloom.color}
+            opacity={bloom.opacity}
+            filter={`url(#badge-soft-${badge.id})`}
+            transform={`rotate(${bloom.rotate} ${bloom.x} ${bloom.y})`}
           />
         ))}
+        {pattern.streams.map((stream, index) => (
+          <g key={`${stream.path}-${index}`} opacity={stream.opacity}>
+            <path d={stream.path} className="badge-river" style={{ strokeWidth: stream.width }} />
+            <path d={stream.highlight} className="badge-river-highlight" style={{ strokeWidth: stream.highlightWidth }} />
+          </g>
+        ))}
+        {pattern.glints.map((glint, index) => (
+          <circle
+            key={`${glint.x}-${glint.y}-${index}`}
+            cx={glint.x}
+            cy={glint.y}
+            r={glint.radius}
+            className="badge-glint"
+            opacity={glint.opacity}
+          />
+        ))}
+        <path d={pattern.sheen} className="badge-sheen" />
       </g>
     </svg>
   );
@@ -747,31 +775,83 @@ function createBadgePattern(timestamp: number) {
     state = Math.imul(state ^ (state >>> 13), 3266489917);
     return ((state ^= state >>> 16) >>> 0) / 4294967296;
   };
-  const hue = Math.floor(78 + next() * 86);
-  const cells: { x: number; y: number }[] = [];
-
-  for (let row = 0; row < 5; row += 1) {
-    for (let column = 0; column < 3; column += 1) {
-      if (next() > 0.45) {
-        const mirrored = 4 - column;
-        cells.push({ x: 18 + column * 17, y: 18 + row * 17 });
-        if (mirrored !== column) {
-          cells.push({ x: 18 + mirrored * 17, y: 18 + row * 17 });
-        }
-      }
-    }
-  }
-
-  if (!cells.length) {
-    cells.push({ x: 52, y: 52 });
-  }
+  const hue = Math.floor(112 + next() * 34);
+  const streamCount = 2 + Math.floor(next() * 3);
 
   return {
-    background: `hsl(${hue} 62% 78%)`,
-    backgroundLight: `hsl(${hue + 18} 88% 94%)`,
-    foreground: `hsl(${Math.max(94, hue - 26)} 64% 28%)`,
-    cells,
+    angle: 14 + next() * 26,
+    mint: `hsl(${hue - 18} 74% 91%)`,
+    green: `hsl(${hue} 66% 62%)`,
+    deep: `hsl(${hue + 8} 68% 32%)`,
+    glow: {
+      x: 24 + next() * 34,
+      y: 18 + next() * 34,
+      color: `hsl(${hue - 30} 88% 92%)`,
+    },
+    blooms: [
+      createBadgeBloom(next, hue - 12, 0.4),
+      createBadgeBloom(next, hue + 8, 0.34),
+      createBadgeBloom(next, hue - 26, 0.26),
+    ],
+    streams: Array.from({ length: streamCount }, (_, index) => createBadgeStream(next, index)),
+    glints: Array.from({ length: 2 + Math.floor(next() * 4) }, () => createBadgeGlint(next)),
+    sheen: createBadgeSheen(next),
   };
+}
+
+function createBadgeBloom(next: () => number, hue: number, opacity: number) {
+  return {
+    x: 14 + next() * 92,
+    y: 16 + next() * 88,
+    rx: 18 + next() * 30,
+    ry: 14 + next() * 24,
+    rotate: -46 + next() * 92,
+    color: `hsl(${hue} ${62 + next() * 20}% ${64 + next() * 18}%)`,
+    opacity,
+  };
+}
+
+function createBadgeStream(next: () => number, index: number) {
+  const startSide = next() > 0.5;
+  const startX = startSide ? -18 : 138;
+  const endX = startSide ? 138 : -18;
+  const startY = 10 + next() * 100;
+  const endY = 10 + next() * 100;
+  const bendA = startSide ? 16 + next() * 38 : 104 - next() * 38;
+  const bendB = startSide ? 76 + next() * 42 : 44 - next() * 42;
+  const driftA = clampPoint(startY + (next() - 0.5) * (68 + index * 8));
+  const driftB = clampPoint(endY + (next() - 0.5) * (76 + index * 10));
+  const path = `M${startX} ${startY}C${bendA} ${driftA} ${bendB} ${driftB} ${endX} ${endY}`;
+  const offset = -10 + next() * 20;
+  const highlight = `M${startX} ${clampPoint(startY + offset)}C${bendA + (next() - 0.5) * 12} ${clampPoint(driftA + offset * 0.7)} ${bendB + (next() - 0.5) * 12} ${clampPoint(driftB - offset * 0.5)} ${endX} ${clampPoint(endY - offset * 0.35)}`;
+
+  return {
+    path,
+    highlight,
+    width: 14 + next() * (index ? 18 : 30),
+    highlightWidth: 3 + next() * 7,
+    opacity: 0.24 + next() * 0.34,
+  };
+}
+
+function createBadgeGlint(next: () => number) {
+  return {
+    x: 20 + next() * 80,
+    y: 18 + next() * 84,
+    radius: 1.4 + next() * 4.8,
+    opacity: 0.18 + next() * 0.42,
+  };
+}
+
+function createBadgeSheen(next: () => number) {
+  const start = 12 + next() * 18;
+  const end = 82 + next() * 24;
+  const lift = 6 + next() * 18;
+  return `M${start} ${24 + next() * 16}C${30 + next() * 16} ${lift} ${62 + next() * 18} ${lift - 2 + next() * 12} ${end} ${22 + next() * 18}`;
+}
+
+function clampPoint(value: number) {
+  return Math.max(-12, Math.min(132, value));
 }
 
 function mixSeed(timestamp: number) {
