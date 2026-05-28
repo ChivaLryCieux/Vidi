@@ -31,9 +31,15 @@ type SessionMetric = {
 };
 
 type BadgeData = {
-  curveType: "2d" | "3d";
+  curveType: "2d" | "3d" | "rings" | "ringsBlack";
   mergedPoints: [number, number][];
   zorderPoints: [number, number, number][];
+  ringPanels?: {
+    points: [[number, number], [number, number], [number, number], [number, number]];
+    color: string;
+    opacity: number;
+    front: boolean;
+  }[];
   colorStart: string;
   colorEnd: string;
   colorInverted: string;
@@ -46,6 +52,7 @@ type BadgeData = {
 type StoredBadge = BadgeData & { id: string; timestamp: number };
 
 const badgeStorageKey = "vidi.badges";
+type MintMode = "normal" | "hidden" | "hiddenBlack";
 
 function pct(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
@@ -383,32 +390,49 @@ function MintView({ latest }: { latest?: SessionMetric }) {
   const [badge, setBadge] = React.useState<StoredBadge | null>(null);
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
+  async function mintFromForm(formElement: HTMLFormElement, mode: MintMode) {
+    const form = new FormData(formElement);
     setGenerating(true);
     setError(null);
     try {
-      const data = await invoke<BadgeData>("gen_badge", {
-        timestamp: new Date(String(form.get("timestamp"))).getTime(),
+      const mintedAt = Date.now();
+      const command = mode === "hiddenBlack"
+        ? "gen_hidden_black_badge"
+        : mode === "hidden"
+          ? "gen_hidden_badge"
+          : "gen_badge";
+      const data = await invoke<BadgeData>(command, {
+        timestamp: mintedAt,
         durationMin: Number(form.get("durationMin")),
         totalShots: Number(form.get("totalShots")),
         avgSpeed: Number(form.get("avgSpeed")),
         avgApex: Number(form.get("avgApex")),
         peakHr: Number(form.get("peakHr")),
       });
-      const stored: StoredBadge = { ...data, id: `${Date.now()}`, timestamp: Date.now() };
+      const stored: StoredBadge = { ...data, id: `${mintedAt}-${mode}`, timestamp: mintedAt };
       setBadge(stored);
       try {
         const existing = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as StoredBadge[];
         localStorage.setItem(badgeStorageKey, JSON.stringify([stored, ...existing].slice(0, 80)));
       } catch { /* ignore */ }
     } catch (err) {
-      setError(`铸造失败: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`${mode === "normal" ? "铸造" : "隐藏款铸造"}失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setGenerating(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    await mintFromForm(e.currentTarget, "normal");
+  }
+
+  async function handleHiddenMint(mode: Exclude<MintMode, "normal">) {
+    if (!formRef.current) return;
+    if (!formRef.current.reportValidity()) return;
+    await mintFromForm(formRef.current, mode);
   }
 
   const defaults = latest ? {
@@ -427,7 +451,7 @@ function MintView({ latest }: { latest?: SessionMetric }) {
           <span>训练数据录入</span>
           <Plus size={20} />
         </div>
-        <form className="data-form" onSubmit={handleSubmit}>
+        <form className="data-form" onSubmit={handleSubmit} ref={formRef}>
           <label>
             训练时间
             <input name="timestamp" type="datetime-local" defaultValue={defaults.timestamp} required />
@@ -453,6 +477,12 @@ function MintView({ latest }: { latest?: SessionMetric }) {
             <input name="peakHr" type="number" min="60" max="220" step="1" defaultValue={defaults.peakHr} required />
           </label>
           <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造徽章"}</button>
+          <button className="secondary" type="button" disabled={generating} onClick={() => handleHiddenMint("hidden")}>
+            铸造隐藏款
+          </button>
+          <button className="secondary black" type="button" disabled={generating} onClick={() => handleHiddenMint("hiddenBlack")}>
+            铸造隐藏款：纯黑
+          </button>
         </form>
         {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
       </Card>
@@ -467,7 +497,7 @@ function MintView({ latest }: { latest?: SessionMetric }) {
               <BadgeMark badge={badge} />
             </div>
             <div className="badge-actions">
-              <strong>{badge.curveType === "2d" ? "Hilbert + Gosper" : "Z-Order 3D"}</strong>
+              <strong>{badgeTitle(badge)}</strong>
               <p className="muted">
                 线宽 {badge.strokeWidth.toFixed(1)} / 不透明度 {badge.opacity.toFixed(2)} / 变点 {badge.variation.toFixed(2)}
               </p>
@@ -507,6 +537,13 @@ function MineView() {
       </Card>
     </div>
   );
+}
+
+function badgeTitle(badge: StoredBadge) {
+  if (badge.curveType === "ringsBlack") return "Hidden Black Rings";
+  if (badge.curveType === "rings") return "Hidden Ribbon Rings";
+  if (badge.curveType === "2d") return "Gosper 2D";
+  return "Z-Order 3D";
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -630,40 +667,108 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
     );
   }
 
-  function ptsToPath(points: [number, number][]): string {
+  function fitFrame(points: [number, number][]) {
+    if (!points.length) {
+      return { cx: 0.5, cy: 0.5, scale: 1 };
+    }
+    const minX = Math.min(...points.map((p) => p[0]));
+    const maxX = Math.max(...points.map((p) => p[0]));
+    const minY = Math.min(...points.map((p) => p[1]));
+    const maxY = Math.max(...points.map((p) => p[1]));
+    const width = Math.max(0.001, maxX - minX);
+    const height = Math.max(0.001, maxY - minY);
+    return {
+      cx: (minX + maxX) / 2,
+      cy: (minY + maxY) / 2,
+      scale: Math.min(1.18, 0.82 / Math.max(width, height)),
+    };
+  }
+
+  function fitCircleFrame(points: [number, number][]) {
+    if (!points.length) {
+      return { cx: 0.5, cy: 0.5, scale: 1 };
+    }
+    const minX = Math.min(...points.map((p) => p[0]));
+    const maxX = Math.max(...points.map((p) => p[0]));
+    const minY = Math.min(...points.map((p) => p[1]));
+    const maxY = Math.max(...points.map((p) => p[1]));
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const maxRadius = Math.max(
+      0.001,
+      ...points.map((p) => Math.hypot(p[0] - cx, p[1] - cy)),
+    );
+    return {
+      cx,
+      cy,
+      scale: Math.min(1.16, 0.43 / maxRadius),
+    };
+  }
+
+  function ptsToPath(points: [number, number][], frame = fitFrame(points)): string {
     if (!points.length) return "";
     return points.map((p, i) => {
-      const x = p[0] * (size - pad * 2) + pad;
-      const y = p[1] * (size - pad * 2) + pad;
+      const fittedX = (p[0] - frame.cx) * frame.scale + 0.5;
+      const fittedY = (p[1] - frame.cy) * frame.scale + 0.5;
+      const x = fittedX * (size - pad * 2) + pad;
+      const y = fittedY * (size - pad * 2) + pad;
       return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(" ");
   }
 
   // Inverted color accent segment around invertedPos
-  function accentPath(points: [number, number][], pos: number, width: number): string {
+  function accentPath(points: [number, number][], pos: number, width: number, frame = fitFrame(points)): string {
     if (points.length < 10) return "";
     const idx = Math.floor(pos * (points.length - 1));
     const half = Math.max(3, Math.floor(width * points.length / 2));
     const slice = points.slice(Math.max(0, idx - half), Math.min(points.length, idx + half));
-    return ptsToPath(slice);
+    return ptsToPath(slice, frame);
   }
 
+  const curveFrame = badge.curveType === "2d" ? fitFrame(badge.mergedPoints) : undefined;
   const curvePath = badge.curveType === "2d"
-    ? ptsToPath(badge.mergedPoints)
+    ? ptsToPath(badge.mergedPoints, curveFrame)
     : "";
 
   // 3D: project z-order points to 2D with perspective
-  function zorderPath(points: [number, number, number][], offset: number): string {
-    if (!points.length) return "";
-    return points.map((p, i) => {
-      const scale = 1.0 / (1.0 + p[2] * 0.5 + offset * 0.35);
-      const x = (p[0] * scale + offset * 0.09) * (size - pad * 2) + pad;
-      const y = (p[1] * scale + offset * 0.09) * (size - pad * 2) + pad;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
-    }).join(" ");
+  function projectZorder(points: [number, number, number][], offset: number): [number, number][] {
+    return points.map((p) => {
+      const depth = 1.55;
+      const scale = 0.9 + (1 - p[2]) * 0.12 * depth;
+      const drift = (p[2] - 0.5) * 0.16 * depth + offset;
+      return [
+        (p[0] - 0.5) * scale + 0.5 + drift * 0.34,
+        (p[1] - 0.5) * scale + 0.5 - drift * 0.22,
+      ];
+    });
   }
 
-  const layers = badge.curveType === "3d" ? Math.max(1, Math.round(badge.variation)) : 0;
+  const zLayerCount = badge.curveType === "3d" ? 2 : 0;
+  const zLayerOffsets = Array.from({ length: zLayerCount }, (_, index) => (index - (zLayerCount - 1) / 2) * 0.046);
+  const zVisiblePoints = badge.curveType === "3d" ? badge.zorderPoints.slice(0, Math.min(badge.zorderPoints.length, 48)) : [];
+  const zProjected = badge.curveType === "3d" ? zLayerOffsets.flatMap((offset) => projectZorder(zVisiblePoints, offset)) : [];
+  const zFrame = fitCircleFrame(zProjected);
+  const zAccent = badge.curveType === "3d" ? ptsToPath(projectZorder(zVisiblePoints.slice(
+    Math.max(0, Math.floor(badge.invertedPos * zVisiblePoints.length) - 8),
+    Math.min(zVisiblePoints.length, Math.floor(badge.invertedPos * zVisiblePoints.length) + 10),
+  ), zLayerOffsets[zLayerOffsets.length - 1] || 0), zFrame) : "";
+  const ringPanels = badge.ringPanels ?? [];
+  const isRingBadge = badge.curveType === "rings" || badge.curveType === "ringsBlack";
+  const isBlackRing = badge.curveType === "ringsBlack";
+  const hasRingBackground = ringPanels.length > 0;
+  const ringFrame = hasRingBackground
+    ? fitCircleFrame(ringPanels.flatMap((panel) => panel.points))
+    : undefined;
+  function panelPoints(panel: NonNullable<BadgeData["ringPanels"]>[number]) {
+    const frame = ringFrame ?? { cx: 0.5, cy: 0.5, scale: 1 };
+    return panel.points.map((point) => {
+      const fittedX = (point[0] - frame.cx) * frame.scale + 0.5;
+      const fittedY = (point[1] - frame.cy) * frame.scale + 0.5;
+      const x = fittedX * (size - pad * 2) + pad;
+      const y = fittedY * (size - pad * 2) + pad;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+  }
 
   return (
     <svg className="badge-mark" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="训练数据徽章">
@@ -678,21 +783,64 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
       </defs>
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 4} className="badge-ring" />
       <g clipPath={`url(#bc-${uid})`}>
-        {badge.curveType === "2d" ? (
+        {!isRingBadge && hasRingBackground && (
+          <g opacity={0.32}>
+            {ringPanels.map((panel, index) => (
+              <polygon
+                key={`bg-${index}-${panel.front ? "f" : "b"}`}
+                points={panelPoints(panel)}
+                fill={panel.color}
+                opacity={Math.min(panel.opacity, 0.62)}
+                stroke="rgba(255,255,255,0.18)"
+                strokeWidth={0.42}
+                strokeLinejoin="round"
+              />
+            ))}
+          </g>
+        )}
+        {isRingBadge ? (
+          <>
+            <circle cx={size / 2} cy={size / 2} r={size / 2 - 18} fill={isBlackRing ? "rgba(0,0,0,0.025)" : "rgba(255,255,248,0.18)"} />
+            {ringPanels.map((panel, index) => (
+              <polygon
+                key={`${index}-${panel.front ? "f" : "b"}`}
+                points={panelPoints(panel)}
+                fill={panel.color}
+                opacity={panel.opacity}
+                stroke={isBlackRing ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.24)"}
+                strokeWidth={isBlackRing ? 0.35 : 0.6}
+                strokeLinejoin="round"
+              />
+            ))}
+            {!isBlackRing && (
+              <>
+                <ellipse cx={size / 2} cy={size * 0.5} rx={size * 0.34} ry={size * 0.12} className="badge-rings-orbit" />
+                <path d={`M${size * 0.22},${size * 0.36} C${size * 0.42},${size * 0.2} ${size * 0.66},${size * 0.74} ${size * 0.82},${size * 0.48}`} className="badge-sheen" opacity={0.28} />
+              </>
+            )}
+          </>
+        ) : badge.curveType === "2d" ? (
           <>
             <path d={curvePath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity} />
             {badge.mergedPoints.length > 5 && (
-              <path d={accentPath(badge.mergedPoints, badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
+              <path d={accentPath(badge.mergedPoints, badge.invertedPos, 0.06, curveFrame)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
             )}
           </>
         ) : (
           <>
-            {Array.from({ length: layers }, (_, i) => (
-              <path key={i} d={zorderPath(badge.zorderPoints, i)} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity * (0.4 + 0.6 * (i + 1) / layers)} />
+            {zLayerOffsets.map((offset, index) => (
+              <path
+                key={offset}
+                d={ptsToPath(projectZorder(zVisiblePoints, offset), zFrame)}
+                fill="none"
+                stroke={index === 0 ? "rgba(255,255,255,0.42)" : `url(#bg-${uid})`}
+                strokeWidth={index === 0 ? badge.strokeWidth * 1.8 : badge.strokeWidth * (0.78 + index * 0.06)}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={index === 0 ? 0.28 : badge.opacity * (0.44 + index * 0.14)}
+              />
             ))}
-            {badge.zorderPoints.length > 5 && (
-              <path d={accentPath(badge.zorderPoints.map(p => [p[0], p[1]] as [number, number]), badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
-            )}
+            {zAccent && <path d={zAccent} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.35} strokeLinecap="round" strokeLinejoin="round" opacity={0.78} />}
           </>
         )}
       </g>
@@ -718,9 +866,10 @@ function isStoredBadge(value: unknown): value is StoredBadge {
   return (
     typeof v.id === "string" &&
     typeof v.timestamp === "number" &&
-    (v.curveType === "2d" || v.curveType === "3d") &&
+    (v.curveType === "2d" || v.curveType === "3d" || v.curveType === "rings" || v.curveType === "ringsBlack") &&
     Array.isArray(v.mergedPoints) &&
     Array.isArray(v.zorderPoints) &&
+    (v.ringPanels === undefined || Array.isArray(v.ringPanels)) &&
     typeof v.colorStart === "string" &&
     typeof v.colorEnd === "string" &&
     typeof v.colorInverted === "string" &&

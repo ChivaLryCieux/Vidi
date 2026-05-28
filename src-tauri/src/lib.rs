@@ -10,7 +10,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
             commands::add_manual_session,
-            commands::gen_badge
+            commands::gen_badge,
+            commands::gen_hidden_badge,
+            commands::gen_hidden_black_badge
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vidi");

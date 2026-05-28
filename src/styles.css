@@ -820,6 +820,13 @@ h1 {
   filter: blur(0.5px);
 }
 
+.badge-rings-orbit {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.34);
+  stroke-width: 1.2;
+  mix-blend-mode: screen;
+}
+
 .data-form {
   display: grid;
   gap: 12px;
@@ -856,6 +863,26 @@ h1 {
   box-shadow:
     0 16px 28px rgba(14, 99, 59, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.data-form button.secondary {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.5), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 248, 0.74), rgba(209, 234, 190, 0.42));
+  color: var(--ink);
+  box-shadow:
+    0 12px 22px rgba(20, 82, 48, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.data-form button.secondary.black {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 42%),
+    linear-gradient(145deg, #0b0f0d, #000);
+  color: #f9fff3;
+  box-shadow:
+    0 14px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .bottom-nav {
