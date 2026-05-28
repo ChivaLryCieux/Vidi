@@ -1,51 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { invoke } from "@tauri-apps/api/core";
 import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy } from "lucide-react";
-import s1 from "../tennis_training_data/session_001_20260411/training_data.json";
-import s2 from "../tennis_training_data/session_002_20260422/training_data.json";
-import s3 from "../tennis_training_data/session_003_20260508/training_data.json";
-import s4 from "../tennis_training_data/session_004_20260514/training_data.json";
-import s5 from "../tennis_training_data/session_005_20260526/training_data.json";
-import s6 from "../tennis_training_data/session_006_20260604/training_data.json";
-import s7 from "../tennis_training_data/session_007_20260618/training_data.json";
-import s8 from "../tennis_training_data/session_008_20260627/training_data.json";
 import "./styles.css";
-
-type Shot = {
-  shot_id: string;
-  phase: string;
-  stroker: "coach" | "player";
-  stroke_type: string;
-  time_delta_ms: number;
-  incoming_ball: { speed_kmh: number; spin_rpm: number };
-  outgoing_ball: {
-    direction: string;
-    depth: string;
-    landing_x: number;
-    landing_y: number;
-    speed_kmh: number;
-    spin_rpm: number;
-    trajectory: null | { apex_height_m: number; curve_points: { x: number; y: number; height_m: number }[] };
-  };
-  result: { is_mistake: boolean; mistake_type: string | null };
-};
-
-type RawSession = {
-  session: {
-    session_id: string;
-    session_index: number;
-    date: string;
-    duration_minutes: number;
-    theme: string;
-    description: string;
-    progress_status: string;
-    days_since_last: number;
-    total_rallies: number;
-    total_shots: number;
-  };
-  shots: Shot[];
-  heart_rate: Record<string, number>;
-};
 
 type SessionMetric = {
   id: string;
@@ -79,11 +36,6 @@ type TimestampBadge = {
 };
 
 const badgeStorageKey = "vidi.timestamp-badges";
-const rawSessions = [s1, s2, s3, s4, s5, s6, s7, s8] as RawSession[];
-
-function avg(values: number[]) {
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-}
 
 function pct(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
@@ -92,73 +44,6 @@ function pct(value: number) {
 function cnDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(new Date(value));
 }
-
-function groupBy<T>(items: T[], key: (item: T) => string) {
-  return items.reduce<Record<string, T[]>>((map, item) => {
-    const name = key(item);
-    map[name] = map[name] || [];
-    map[name].push(item);
-    return map;
-  }, {});
-}
-
-function buildMetric(raw: RawSession): SessionMetric {
-  const playerShots = raw.shots.filter((shot) => shot.stroker === "player");
-  const mistakes = playerShots.filter((shot) => shot.result.is_mistake).length;
-  const hrValues = Object.values(raw.heart_rate);
-  const strokeStats = Object.entries(groupBy(playerShots, (shot) => shot.stroke_type)).map(([stroke, shots]) => {
-    const failed = shots.filter((shot) => shot.result.is_mistake).length;
-    return {
-      stroke,
-      shots: shots.length,
-      mistakes: failed,
-      rate: failed / shots.length,
-      speed: avg(shots.map((shot) => shot.outgoing_ball.speed_kmh)),
-    };
-  });
-  const phaseStats = Object.entries(groupBy(playerShots, (shot) => shot.phase)).map(([phase, shots]) => {
-    const failed = shots.filter((shot) => shot.result.is_mistake).length;
-    return { phase, shots: shots.length, mistakes: failed, rate: failed / shots.length };
-  });
-  const mistakeRate = mistakes / playerShots.length;
-  const deepRate = playerShots.filter((shot) => shot.outgoing_ball.depth === "深").length / playerShots.length;
-  return {
-    id: raw.session.session_id,
-    index: raw.session.session_index,
-    date: raw.session.date,
-    label: `S${raw.session.session_index}`,
-    theme: raw.session.theme,
-    status: raw.session.progress_status,
-    shots: raw.session.total_shots,
-    rallies: raw.session.total_rallies,
-    playerShots: playerShots.length,
-    mistakes,
-    mistakeRate,
-    avgSpeed: avg(playerShots.map((shot) => shot.outgoing_ball.speed_kmh)),
-    maxHr: Math.max(...hrValues),
-    avgHr: avg(hrValues),
-    avgSpin: avg(playerShots.map((shot) => shot.outgoing_ball.spin_rpm)),
-    deepRate,
-    consistency: 1 - mistakeRate,
-    confidence: Math.min(0.96, 0.48 + (1 - mistakeRate) * 0.32 + deepRate * 0.18),
-    rallyLength: raw.session.total_shots / raw.session.total_rallies,
-    phaseStats,
-    strokeStats,
-    landing: playerShots.map((shot) => ({
-      x: shot.outgoing_ball.landing_x,
-      y: shot.outgoing_ball.landing_y,
-      mistake: shot.result.is_mistake,
-      stroke: shot.stroke_type,
-      speed: shot.outgoing_ball.speed_kmh,
-    })),
-    trajectories: playerShots
-      .filter((shot) => shot.outgoing_ball.trajectory)
-      .slice(0, 80)
-      .map((shot) => ({ points: shot.outgoing_ball.trajectory!.curve_points, stroke: shot.stroke_type })),
-  };
-}
-
-const baseMetrics = rawSessions.map(buildMetric);
 
 const navItems = [
   { id: "overview", label: "总览", icon: Grid2X2 },
@@ -180,57 +65,49 @@ type OverviewSubView = (typeof overviewSubTabs)[number]["id"];
 function App() {
   const [view, setView] = React.useState<ViewId>("overview");
   const [subView, setSubView] = React.useState<OverviewSubView>("overview");
-  const [selected, setSelected] = React.useState(baseMetrics.length - 1);
+  const [baseMetrics, setBaseMetrics] = React.useState<SessionMetric[]>([]);
+  const [selected, setSelected] = React.useState(0);
   const [manualSessions, setManualSessions] = React.useState<SessionMetric[]>([]);
   const metrics = [...baseMetrics, ...manualSessions];
   const current = metrics[selected] || metrics[metrics.length - 1];
   const first = metrics[0];
   const latest = metrics[metrics.length - 1];
-  const improvement = (first.mistakeRate - latest.mistakeRate) / first.mistakeRate;
 
-  function addManualSession(form: FormData) {
-    const rate = Number(form.get("mistakeRate")) / 100;
-    const deep = Number(form.get("deepRate")) / 100;
-    const speed = Number(form.get("avgSpeed"));
-    const nextIndex = metrics.length + 1;
-    const synthetic: SessionMetric = {
-      id: `manual_${Date.now()}`,
-      index: nextIndex,
-      date: new Date().toISOString(),
-      label: `S${nextIndex}`,
+  React.useEffect(() => {
+    invoke<SessionMetric[]>("get_sessions").then((sessions) => {
+      setBaseMetrics(sessions);
+      setSelected(sessions.length - 1);
+    });
+  }, []);
+
+  const improvement = first && latest ? (first.mistakeRate - latest.mistakeRate) / first.mistakeRate : 0;
+
+  async function addManualSession(form: FormData) {
+    const synthetic = await invoke<SessionMetric>("add_manual_session", {
       theme: String(form.get("theme") || "自主训练"),
-      status: rate < latest.mistakeRate ? "突破期" : "巩固期",
-      shots: 1200,
-      rallies: 140,
-      playerShots: 600,
-      mistakes: Math.round(600 * rate),
-      mistakeRate: rate,
-      avgSpeed: speed,
+      mistakeRate: Number(form.get("mistakeRate")) / 100,
+      deepRate: Number(form.get("deepRate")) / 100,
+      avgSpeed: Number(form.get("avgSpeed")),
       maxHr: Number(form.get("maxHr")),
-      avgHr: Number(form.get("maxHr")) - 18,
-      avgSpin: latest.avgSpin,
-      deepRate: deep,
-      consistency: 1 - rate,
-      confidence: Math.min(0.96, 0.48 + (1 - rate) * 0.32 + deep * 0.18),
-      rallyLength: 8.5,
-      phaseStats: [
-        { phase: "自主热身", shots: 150, mistakes: Math.round(150 * rate * 0.8), rate: rate * 0.8 },
-        { phase: "专项练习", shots: 300, mistakes: Math.round(300 * rate), rate },
-        { phase: "模拟比赛", shots: 150, mistakes: Math.round(150 * rate * 1.18), rate: rate * 1.18 },
-      ],
-      strokeStats: [
-        { stroke: "正手", shots: 320, mistakes: Math.round(320 * rate * 0.95), rate: rate * 0.95, speed },
-        { stroke: "反手", shots: 280, mistakes: Math.round(280 * rate * 1.06), rate: rate * 1.06, speed: speed * 0.94 },
-      ],
-      landing: latest.landing.slice(0, 500).map((point, i) => ({
-        ...point,
-        mistake: i % Math.max(3, Math.round(1 / Math.max(rate, 0.05))) === 0,
-      })),
-      trajectories: latest.trajectories,
-    };
+    });
     setManualSessions((items) => [...items, synthetic]);
     setSelected(metrics.length);
     setView("overview");
+  }
+
+  if (!first) {
+    return (
+      <main className="app-shell">
+        <header className="topbar">
+          <div>
+            <p className="kicker">Vidi Tennis Intelligence</p>
+            <h1>Vidi</h1>
+          </div>
+          <div className="mark" aria-label="Vidi mark">V</div>
+        </header>
+        <p className="muted" style={{ marginTop: 24, textAlign: "center" }}>加载训练数据中...</p>
+      </main>
+    );
   }
 
   return (
