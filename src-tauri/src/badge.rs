@@ -285,7 +285,7 @@ fn generate_ring_panels(
     total_shots: i64,
     avg_speed: f64,
     avg_apex: f64,
-    pure_black: bool,
+    forced_color: Option<&str>,
 ) -> Vec<RingPanel> {
     let digest = sha256(format!("vidi-hidden-rings:{timestamp}").as_bytes());
     let sensors = RingSensors {
@@ -324,11 +324,12 @@ fn generate_ring_panels(
                 stream.width * (0.66 + (index % 4) as f64 * 0.18 + sensors.temperature * 0.24);
             let jitter = (index as f64 * 7.13 + phase * 1.7).sin() * sensors.sound * 0.42;
             let shade = 0.84 + mid_angle.sin() * 0.12;
-            let color = if pure_black {
-                "rgb(0, 0, 0)".to_string()
+            let color = if let Some(color) = forced_color {
+                color.to_string()
             } else {
                 rgba_color(RING_COLORS[(group + stream_index) % RING_COLORS.len()], shade)
             };
+            let forced = forced_color.is_some();
 
             raw.push(RingPanel {
                 points: [
@@ -344,7 +345,7 @@ fn generate_ring_panels(
                     ],
                 ],
                 color,
-                opacity: if pure_black {
+                opacity: if forced {
                     0.82 + digest_unit(&digest, (index + stream_index) % 15) * 0.16
                 } else {
                     0.58 + digest_unit(&digest, (index + stream_index) % 15) * 0.28
@@ -521,7 +522,14 @@ pub fn generate_badge(
     avg_apex: f64,
     peak_hr: f64,
 ) -> BadgeData {
-    let (color_start, color_end, color_inverted) = pick_palette(timestamp);
+    let pixel_color = if (avg_speed.round() as i64).rem_euclid(2) == 1 {
+        "rgb(255, 255, 255)"
+    } else {
+        "rgb(0, 0, 0)"
+    };
+    let color_start = pixel_color.to_string();
+    let color_end = pixel_color.to_string();
+    let color_inverted = pixel_color.to_string();
 
     // Parameter mappings
     let volume = (total_shots as f64 / 2000.0).clamp(0.0, 1.0);
@@ -530,7 +538,7 @@ pub fn generate_badge(
     let variation = (duration_min / 120.0).min(1.0) * 0.7 + 0.3;
     let inverted_pos = (peak_hr / 200.0).clamp(0.0, 1.0);
     let background_panels =
-        generate_ring_panels(timestamp, duration_min, total_shots, avg_speed, avg_apex, false);
+        generate_ring_panels(timestamp, duration_min, total_shots, avg_speed, avg_apex, None);
 
     if avg_speed < 80.0 {
         // 2D: Gosper curve only — a single continuous hexagonal path.
@@ -602,7 +610,7 @@ pub fn generate_hidden_badge(
     peak_hr: f64,
 ) -> BadgeData {
     let (color_start, color_end, color_inverted) = pick_palette(timestamp);
-    let panels = generate_ring_panels(timestamp, duration_min, total_shots, avg_speed, avg_apex, false);
+    let panels = generate_ring_panels(timestamp, duration_min, total_shots, avg_speed, avg_apex, None);
 
     BadgeData {
         curve_type: "rings".into(),
@@ -627,7 +635,14 @@ pub fn generate_hidden_black_badge(
     avg_apex: f64,
     peak_hr: f64,
 ) -> BadgeData {
-    let panels = generate_ring_panels(timestamp, duration_min, total_shots, avg_speed, avg_apex, true);
+    let panels = generate_ring_panels(
+        timestamp,
+        duration_min,
+        total_shots,
+        avg_speed,
+        avg_apex,
+        Some("rgb(0, 0, 0)"),
+    );
 
     BadgeData {
         curve_type: "ringsBlack".into(),

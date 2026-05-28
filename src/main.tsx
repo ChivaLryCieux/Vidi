@@ -708,12 +708,18 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   function ptsToPath(points: [number, number][], frame = fitFrame(points)): string {
     if (!points.length) return "";
     return points.map((p, i) => {
-      const fittedX = (p[0] - frame.cx) * frame.scale + 0.5;
-      const fittedY = (p[1] - frame.cy) * frame.scale + 0.5;
-      const x = fittedX * (size - pad * 2) + pad;
-      const y = fittedY * (size - pad * 2) + pad;
+      const [x, y] = pointToCanvas(p, frame);
       return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(" ");
+  }
+
+  function pointToCanvas(point: [number, number], frame: { cx: number; cy: number; scale: number }): [number, number] {
+    const fittedX = (point[0] - frame.cx) * frame.scale + 0.5;
+    const fittedY = (point[1] - frame.cy) * frame.scale + 0.5;
+    return [
+      fittedX * (size - pad * 2) + pad,
+      fittedY * (size - pad * 2) + pad,
+    ];
   }
 
   // Inverted color accent segment around invertedPos
@@ -756,14 +762,20 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   const isRingBadge = badge.curveType === "rings" || badge.curveType === "ringsBlack";
   const isBlackRing = badge.curveType === "ringsBlack";
   const hasRingBackground = ringPanels.length > 0;
-  const ringFrame = hasRingBackground
+  const isWhiteCurve = badge.colorStart.includes("255");
+  const regularBackground = isWhiteCurve ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
+  const contrastStroke = isWhiteCurve ? "rgba(0,0,0,0.86)" : "rgba(255,255,255,0.9)";
+  const ringFrameBase = hasRingBackground
     ? fitCircleFrame(ringPanels.flatMap((panel) => panel.points))
     : undefined;
-  function panelPoints(panel: NonNullable<BadgeData["ringPanels"]>[number]) {
-    const frame = ringFrame ?? { cx: 0.5, cy: 0.5, scale: 1 };
+  const ringFrame = ringFrameBase && !isRingBadge
+    ? { ...ringFrameBase, scale: ringFrameBase.scale * 1.41 }
+    : ringFrameBase;
+  function panelPoints(panel: NonNullable<BadgeData["ringPanels"]>[number], frame = ringFrame) {
+    const activeFrame = frame ?? { cx: 0.5, cy: 0.5, scale: 1 };
     return panel.points.map((point) => {
-      const fittedX = (point[0] - frame.cx) * frame.scale + 0.5;
-      const fittedY = (point[1] - frame.cy) * frame.scale + 0.5;
+      const fittedX = (point[0] - activeFrame.cx) * activeFrame.scale + 0.5;
+      const fittedY = (point[1] - activeFrame.cy) * activeFrame.scale + 0.5;
       const x = fittedX * (size - pad * 2) + pad;
       const y = fittedY * (size - pad * 2) + pad;
       return `${x.toFixed(2)},${y.toFixed(2)}`;
@@ -783,14 +795,17 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
       </defs>
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 4} className="badge-ring" />
       <g clipPath={`url(#bc-${uid})`}>
+        {!isRingBadge && (
+          <circle cx={size / 2} cy={size / 2} r={size / 2 - 6} fill={regularBackground} />
+        )}
         {!isRingBadge && hasRingBackground && (
-          <g opacity={0.32}>
+          <g>
             {ringPanels.map((panel, index) => (
               <polygon
                 key={`bg-${index}-${panel.front ? "f" : "b"}`}
                 points={panelPoints(panel)}
                 fill={panel.color}
-                opacity={Math.min(panel.opacity, 0.62)}
+                opacity={1}
                 stroke="rgba(255,255,255,0.18)"
                 strokeWidth={0.42}
                 strokeLinejoin="round"
@@ -821,10 +836,8 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
           </>
         ) : badge.curveType === "2d" ? (
           <>
-            <path d={curvePath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity} />
-            {badge.mergedPoints.length > 5 && (
-              <path d={accentPath(badge.mergedPoints, badge.invertedPos, 0.06, curveFrame)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
-            )}
+            <path d={curvePath} fill="none" stroke={contrastStroke} strokeWidth={badge.strokeWidth * 2.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.72} />
+            <path d={curvePath} fill="none" stroke={badge.colorStart} strokeWidth={badge.strokeWidth * 1.55} strokeLinecap="round" strokeLinejoin="round" opacity={1} />
           </>
         ) : (
           <>
@@ -833,14 +846,13 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
                 key={offset}
                 d={ptsToPath(projectZorder(zVisiblePoints, offset), zFrame)}
                 fill="none"
-                stroke={index === 0 ? "rgba(255,255,255,0.42)" : `url(#bg-${uid})`}
-                strokeWidth={index === 0 ? badge.strokeWidth * 1.8 : badge.strokeWidth * (0.78 + index * 0.06)}
+                stroke={index === 0 ? contrastStroke : badge.colorStart}
+                strokeWidth={badge.strokeWidth * (index === 0 ? 2.4 : 1.55)}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                opacity={index === 0 ? 0.28 : badge.opacity * (0.44 + index * 0.14)}
+                opacity={index === 0 ? 0.72 : 1}
               />
             ))}
-            {zAccent && <path d={zAccent} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.35} strokeLinecap="round" strokeLinejoin="round" opacity={0.78} />}
           </>
         )}
       </g>
