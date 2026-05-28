@@ -162,17 +162,24 @@ const baseMetrics = rawSessions.map(buildMetric);
 
 const navItems = [
   { id: "overview", label: "总览", icon: Grid2X2 },
-  { id: "growth", label: "成长", icon: LineChart },
-  { id: "court", label: "球场", icon: Target },
-  { id: "load", label: "负荷", icon: Activity },
-  { id: "badges", label: "徽章", icon: CircleUserRound },
-  { id: "input", label: "录入", icon: Plus },
+  { id: "mint", label: "铸造", icon: Sparkles },
+  { id: "mine", label: "我的", icon: CircleUserRound },
 ] as const;
 
 type ViewId = (typeof navItems)[number]["id"];
 
+const overviewSubTabs = [
+  { id: "overview", label: "总览", icon: Grid2X2 },
+  { id: "growth", label: "成长", icon: LineChart },
+  { id: "court", label: "球场", icon: Target },
+  { id: "load", label: "负荷", icon: Activity },
+] as const;
+
+type OverviewSubView = (typeof overviewSubTabs)[number]["id"];
+
 function App() {
   const [view, setView] = React.useState<ViewId>("overview");
+  const [subView, setSubView] = React.useState<OverviewSubView>("overview");
   const [selected, setSelected] = React.useState(baseMetrics.length - 1);
   const [manualSessions, setManualSessions] = React.useState<SessionMetric[]>([]);
   const metrics = [...baseMetrics, ...manualSessions];
@@ -236,23 +243,41 @@ function App() {
         <div className="mark" aria-label="Vidi mark">V</div>
       </header>
 
-      <section className="hero-strip">
-        <div>
-          <span>半年度成长叙事</span>
-          <strong>{pct(improvement)} 失误率改善</strong>
-        </div>
-        <Sparkles size={28} />
-      </section>
-
-      <SessionRail metrics={metrics} selected={selected} onSelect={setSelected} />
+      {view === "overview" && (
+        <>
+          <section className="hero-strip">
+            <div>
+              <span>半年度成长叙事</span>
+              <strong>{pct(improvement)} 失误率改善</strong>
+            </div>
+            <Sparkles size={28} />
+          </section>
+          <SessionRail metrics={metrics} selected={selected} onSelect={setSelected} />
+        </>
+      )}
 
       <section className="view-frame">
-        {view === "overview" && <Overview current={current} first={first} latest={latest} metrics={metrics} />}
-        {view === "growth" && <Growth metrics={metrics} selected={selected} onSelect={setSelected} />}
-        {view === "court" && <CourtView current={current} />}
-        {view === "load" && <LoadView current={current} metrics={metrics} />}
-        {view === "badges" && <BadgeView />}
-        {view === "input" && <InputView onAdd={addManualSession} latest={latest} />}
+        {view === "overview" && (
+          <>
+            <div className="sub-tabs" aria-label="总览子导航">
+              {overviewSubTabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button key={tab.id} className={subView === tab.id ? "active" : ""} onClick={() => setSubView(tab.id)} type="button">
+                    <Icon size={16} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {subView === "overview" && <Overview current={current} first={first} latest={latest} metrics={metrics} />}
+            {subView === "growth" && <Growth metrics={metrics} selected={selected} onSelect={setSelected} />}
+            {subView === "court" && <CourtView current={current} />}
+            {subView === "load" && <LoadView current={current} metrics={metrics} />}
+          </>
+        )}
+        {view === "mint" && <MintView onAdd={addManualSession} latest={latest} />}
+        {view === "mine" && <MineView />}
       </section>
 
       <nav className="bottom-nav" aria-label="主导航">
@@ -464,69 +489,6 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
   );
 }
 
-function BadgeView() {
-  const [badges, setBadges] = React.useState<TimestampBadge[]>(readBadges);
-  const latest = badges[0];
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(badgeStorageKey, JSON.stringify(badges));
-    } catch {
-      // Local persistence can be disabled by the host webview.
-    }
-  }, [badges]);
-
-  function addBadge() {
-    const timestamp = Date.now();
-    setBadges((items) => [{ id: `${timestamp}-${items.length}`, timestamp }, ...items].slice(0, 80));
-  }
-
-  return (
-    <div className="grid-view">
-      <Card className="badge-studio wide-card">
-        <div className="card-title">
-          <span>时间戳圆形徽章</span>
-          <CircleUserRound size={20} />
-        </div>
-        <div className="badge-studio-body">
-          <div className="badge-preview">
-            {latest ? <BadgeMark badge={latest} /> : <span className="badge-placeholder" aria-hidden="true" />}
-          </div>
-          <div className="badge-actions">
-            <strong>{latest ? `#${latest.timestamp}` : "新徽章"}</strong>
-            <p className="muted">{latest ? formatMoment(latest.timestamp) : "等待时间签名"}</p>
-            <button type="button" onClick={addBadge}>
-              <Plus size={20} />
-              <span>生成徽章</span>
-            </button>
-          </div>
-        </div>
-      </Card>
-      <Card className="wide-card">
-        <div className="card-title">
-          <span>本地徽章库</span>
-          <span>{badges.length} 枚</span>
-        </div>
-        {badges.length ? (
-          <div className="badge-grid" aria-label="本地生成徽章">
-            {badges.map((badge) => (
-              <figure key={badge.id} className="badge-tile">
-                <BadgeMark badge={badge} />
-                <figcaption>
-                  <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
-                  <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        ) : (
-          <p className="muted">当前设备还没有保留的徽章。</p>
-        )}
-      </Card>
-    </div>
-  );
-}
-
 function InputView({ onAdd, latest }: { onAdd: (form: FormData) => void; latest: SessionMetric }) {
   return (
     <div className="grid-view">
@@ -572,6 +534,80 @@ function InputView({ onAdd, latest }: { onAdd: (form: FormData) => void; latest:
           <span>Ready</span>
         </div>
         <p className="muted">当前版本用表单模拟用户输入。后续可将同一数据模型接入 Tauri 文件读取、手机端传感器、CSV 导入或云端账号同步。</p>
+      </Card>
+    </div>
+  );
+}
+
+function MintView({ onAdd, latest }: { onAdd: (form: FormData) => void; latest: SessionMetric }) {
+  const [badges, setBadges] = React.useState<TimestampBadge[]>(readBadges);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(badgeStorageKey, JSON.stringify(badges));
+    } catch {
+      // Local persistence can be disabled by the host webview.
+    }
+  }, [badges]);
+
+  function addBadge() {
+    const timestamp = Date.now();
+    setBadges((items) => [{ id: `${timestamp}-${items.length}`, timestamp }, ...items].slice(0, 80));
+  }
+
+  const latestBadge = badges[0];
+
+  return (
+    <div className="grid-view">
+      <InputView onAdd={onAdd} latest={latest} />
+      <Card className="badge-studio wide-card">
+        <div className="card-title">
+          <span>时间戳徽章铸造</span>
+          <Sparkles size={20} />
+        </div>
+        <div className="badge-studio-body">
+          <div className="badge-preview">
+            {latestBadge ? <BadgeMark badge={latestBadge} /> : <span className="badge-placeholder" aria-hidden="true" />}
+          </div>
+          <div className="badge-actions">
+            <strong>{latestBadge ? `#${latestBadge.timestamp}` : "新徽章"}</strong>
+            <p className="muted">{latestBadge ? formatMoment(latestBadge.timestamp) : "等待时间签名"}</p>
+            <button type="button" onClick={addBadge}>
+              <Plus size={20} />
+              <span>铸造徽章</span>
+            </button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function MineView() {
+  const [badges] = React.useState<TimestampBadge[]>(readBadges);
+
+  return (
+    <div className="grid-view">
+      <Card className="wide-card">
+        <div className="card-title">
+          <span>我的徽章</span>
+          <span>{badges.length} 枚</span>
+        </div>
+        {badges.length ? (
+          <div className="badge-grid" aria-label="本地生成徽章">
+            {badges.map((badge) => (
+              <figure key={badge.id} className="badge-tile">
+                <BadgeMark badge={badge} />
+                <figcaption>
+                  <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                  <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">还没有徽章，去铸造一枚吧。</p>
+        )}
       </Card>
     </div>
   );
