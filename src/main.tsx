@@ -656,14 +656,14 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   function zorderPath(points: [number, number, number][], offset: number): string {
     if (!points.length) return "";
     return points.map((p, i) => {
-      const scale = 1.0 / (1.0 + p[2] * 0.4 + offset * 0.25);
-      const x = (p[0] * scale + offset * 0.06) * (size - pad * 2) + pad;
-      const y = (p[1] * scale + offset * 0.06) * (size - pad * 2) + pad;
+      const scale = 1.0 / (1.0 + p[2] * 0.5 + offset * 0.35);
+      const x = (p[0] * scale + offset * 0.09) * (size - pad * 2) + pad;
+      const y = (p[1] * scale + offset * 0.09) * (size - pad * 2) + pad;
       return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(" ");
   }
 
-  const layers = badge.curveType === "3d" ? Math.max(2, Math.round(badge.variation)) : 0;
+  const layers = badge.curveType === "3d" ? Math.max(1, Math.round(badge.variation)) : 0;
 
   return (
     <svg className="badge-mark" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="训练数据徽章">

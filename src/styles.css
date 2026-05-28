@@ -56,6 +56,7 @@ button {
   margin: 0 auto;
   padding: max(16px, env(safe-area-inset-top)) 12px calc(104px + env(safe-area-inset-bottom));
   overflow-x: clip;
+  isolation: isolate;
 }
 
 .topbar,
@@ -71,9 +72,12 @@ button {
 }
 
 .topbar {
+  position: relative;
+  z-index: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  overflow: hidden;
   border-radius: 30px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 247, 0.38)),
@@ -200,6 +204,31 @@ h1 {
   min-height: 58vh;
 }
 
+.app-shell--full .view-frame {
+  position: relative;
+  z-index: 1;
+  margin-top: 18px;
+  isolation: isolate;
+}
+
+.app-shell--full .topbar,
+.app-shell--full .card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.app-shell--full .topbar {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 247, 0.74)),
+    rgba(255, 255, 249, 0.86);
+}
+
+.app-shell--full .card {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 247, 0.66)),
+    rgba(255, 255, 249, 0.84);
+}
+
 .sub-tabs {
   display: flex;
   gap: 8px;
@@ -249,8 +278,10 @@ h1 {
 }
 
 .card {
+  position: relative;
   min-width: 0;
   overflow: hidden;
+  isolation: isolate;
   border-radius: 30px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 247, 0.24)),
@@ -266,6 +297,8 @@ h1 {
 }
 
 .card-title {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;

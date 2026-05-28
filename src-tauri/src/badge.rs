@@ -208,8 +208,8 @@ pub fn generate_badge(
         let count = 256;
         let zorder = zorder_curve3d(count);
 
-        // 30 min → 2 layers, 120 min → 5 layers
-        let layers = ((duration_min / 30.0).round() as usize + 1).min(5).max(2);
+        // 1 layer baseline, +1 per ~50 min, capped at 3
+        let layers = (1 + (duration_min / 50.0).floor() as usize).min(3);
 
         BadgeData {
             curve_type: "3d".into(),
