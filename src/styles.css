@@ -980,18 +980,26 @@ input:focus-visible {
     grid-column: 1;
   }
 
-  .topbar--full {
-    grid-column: 1 / -1;
-  }
-
   .view-frame {
     grid-column: 2;
     grid-row: 1 / 4;
   }
 
-  .app-shell--full .view-frame {
-    grid-column: 1 / -1;
+  .app-shell--full {
+    display: block;
+    max-width: 800px;
+    margin-inline: auto;
+  }
+
+  .app-shell--full .topbar {
+    grid-column: auto;
     grid-row: auto;
+  }
+
+  .app-shell--full .view-frame {
+    grid-column: auto;
+    grid-row: auto;
+    margin-top: 18px;
   }
 
   .session-rail {

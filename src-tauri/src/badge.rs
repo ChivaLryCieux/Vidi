@@ -4,8 +4,7 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct BadgeData {
     pub curve_type: String,
-    pub hilbert_points: Vec<[f64; 2]>,
-    pub gosper_points: Vec<[f64; 2]>,
+    pub merged_points: Vec<[f64; 2]>,
     pub zorder_points: Vec<[f64; 3]>,
     pub color_start: String,
     pub color_end: String,
@@ -167,13 +166,17 @@ pub fn generate_badge(
     let inverted_pos = (peak_hr / 200.0).clamp(0.0, 1.0);
 
     if avg_speed < 80.0 {
-        // 2D: Hilbert + Gosper
+        // 2D: Hilbert grows into Gosper — single continuous path
         let hilbert = hilbert_curve(4); // 16x16 = 256 points
         let gosper = gosper_curve(3);
 
-        // Apply variation as perturbation amplitude
-        let amp = variation * 0.015;
-        let perturbed_hilbert: Vec<[f64; 2]> = hilbert
+        // Transition point: shorter training → earlier switch
+        let transition = (0.4 + variation * 0.3).clamp(0.2, 0.85);
+        let hilbert_end = (hilbert.len() as f64 * transition) as usize;
+        let gosper_start = ((1.0 - transition) * gosper.len() as f64) as usize;
+
+        let amp = variation * 0.012;
+        let mut merged: Vec<[f64; 2]> = hilbert[..hilbert_end]
             .iter()
             .enumerate()
             .map(|(i, (x, y))| {
@@ -182,19 +185,15 @@ pub fn generate_badge(
             })
             .collect();
 
-        let perturbed_gosper: Vec<[f64; 2]> = gosper
-            .iter()
-            .enumerate()
-            .map(|(i, (x, y))| {
-                let phase = i as f64 * 0.23;
-                [x + phase.cos() * amp, y + phase.sin() * amp]
-            })
-            .collect();
+        // Gosper continues from where Hilbert ended
+        for (i, (x, y)) in gosper[gosper_start..].iter().enumerate() {
+            let phase = i as f64 * 0.23;
+            merged.push([x + phase.cos() * amp, y + phase.sin() * amp]);
+        }
 
         BadgeData {
             curve_type: "2d".into(),
-            hilbert_points: perturbed_hilbert,
-            gosper_points: perturbed_gosper,
+            merged_points: merged,
             zorder_points: vec![],
             color_start,
             color_end,
@@ -202,20 +201,19 @@ pub fn generate_badge(
             inverted_pos,
             stroke_width,
             opacity,
-            variation,
+            variation: transition,
         }
     } else {
         // 3D: Z-Order
         let count = 256;
         let zorder = zorder_curve3d(count);
 
-        // Number of overlapping layers from variation
-        let layers = (variation * 4.0).round() as usize + 1;
+        // 30 min → 2 layers, 120 min → 5 layers
+        let layers = ((duration_min / 30.0).round() as usize + 1).min(5).max(2);
 
         BadgeData {
             curve_type: "3d".into(),
-            hilbert_points: vec![],
-            gosper_points: vec![],
+            merged_points: vec![],
             zorder_points: zorder.iter().map(|&(x, y, z)| [x, y, z]).collect(),
             color_start,
             color_end,

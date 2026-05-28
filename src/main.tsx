@@ -32,8 +32,7 @@ type SessionMetric = {
 
 type BadgeData = {
   curveType: "2d" | "3d";
-  hilbertPoints: [number, number][];
-  gosperPoints: [number, number][];
+  mergedPoints: [number, number][];
   zorderPoints: [number, number, number][];
   colorStart: string;
   colorEnd: string;
@@ -84,15 +83,19 @@ function App() {
   const latest = metrics[metrics.length - 1];
 
   React.useEffect(() => {
-    invoke<SessionMetric[]>("get_sessions").then((sessions) => {
-      setBaseMetrics(sessions);
-      setSelected(sessions.length - 1);
-    });
+    invoke<SessionMetric[]>("get_sessions")
+      .then((sessions) => {
+        setBaseMetrics(sessions);
+        setSelected(sessions.length - 1);
+      })
+      .catch((err) => {
+        console.error("get_sessions failed:", err);
+      });
   }, []);
 
   const improvement = first && latest ? (first.mistakeRate - latest.mistakeRate) / first.mistakeRate : 0;
 
-  if (!first) {
+  if (!metrics.length) {
     return (
       <main className="app-shell">
         <header className="topbar">
@@ -102,14 +105,27 @@ function App() {
           </div>
           <div className="mark" aria-label="Vidi mark">V</div>
         </header>
-        <p className="muted" style={{ marginTop: 24, textAlign: "center" }}>加载训练数据中...</p>
+        <section className="view-frame">
+          <p className="muted" style={{ marginTop: 24, textAlign: "center" }}>加载训练数据中...</p>
+        </section>
+        <nav className="bottom-nav" aria-label="主导航">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => setView(item.id)} type="button">
+                <Icon size={20} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </main>
     );
   }
 
   return (
-    <main className="app-shell">
-      <header className={`topbar${view !== "overview" ? " topbar--full" : ""}`}>
+    <main className={`app-shell${view !== "overview" ? " app-shell--full" : ""}`}>
+      <header className="topbar">
         <div>
           <p className="kicker">Vidi Tennis Intelligence</p>
           <h1>Vidi</h1>
@@ -366,11 +382,13 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
 function MintView({ latest }: { latest?: SessionMetric }) {
   const [badge, setBadge] = React.useState<StoredBadge | null>(null);
   const [generating, setGenerating] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     setGenerating(true);
+    setError(null);
     try {
       const data = await invoke<BadgeData>("gen_badge", {
         timestamp: new Date(String(form.get("timestamp"))).getTime(),
@@ -382,11 +400,12 @@ function MintView({ latest }: { latest?: SessionMetric }) {
       });
       const stored: StoredBadge = { ...data, id: `${Date.now()}`, timestamp: Date.now() };
       setBadge(stored);
-      // Persist to localStorage
       try {
         const existing = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as StoredBadge[];
         localStorage.setItem(badgeStorageKey, JSON.stringify([stored, ...existing].slice(0, 80)));
       } catch { /* ignore */ }
+    } catch (err) {
+      setError(`铸造失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setGenerating(false);
     }
@@ -435,6 +454,7 @@ function MintView({ latest }: { latest?: SessionMetric }) {
           </label>
           <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造徽章"}</button>
         </form>
+        {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
       </Card>
       {badge && (
         <Card className="badge-studio wide-card">
@@ -601,6 +621,15 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   const pad = 10;
   const uid = badge.id;
 
+  // Defensive: if data is malformed, render a placeholder ring
+  if (!Array.isArray(badge.mergedPoints) || !Array.isArray(badge.zorderPoints)) {
+    return (
+      <svg className="badge-mark" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="训练数据徽章">
+        <circle cx={size / 2} cy={size / 2} r={size / 2 - 4} className="badge-ring" />
+      </svg>
+    );
+  }
+
   function ptsToPath(points: [number, number][]): string {
     if (!points.length) return "";
     return points.map((p, i) => {
@@ -619,26 +648,22 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
     return ptsToPath(slice);
   }
 
-  const mainPath = badge.curveType === "2d"
-    ? ptsToPath(badge.hilbertPoints)
-    : "";
-
-  const secondPath = badge.curveType === "2d"
-    ? ptsToPath(badge.gosperPoints)
+  const curvePath = badge.curveType === "2d"
+    ? ptsToPath(badge.mergedPoints)
     : "";
 
   // 3D: project z-order points to 2D with perspective
   function zorderPath(points: [number, number, number][], offset: number): string {
     if (!points.length) return "";
     return points.map((p, i) => {
-      const scale = 1.0 / (1.0 + p[2] * 0.3 + offset * 0.15);
-      const x = (p[0] * scale + offset * 0.04) * (size - pad * 2) + pad;
-      const y = (p[1] * scale + offset * 0.04) * (size - pad * 2) + pad;
+      const scale = 1.0 / (1.0 + p[2] * 0.4 + offset * 0.25);
+      const x = (p[0] * scale + offset * 0.06) * (size - pad * 2) + pad;
+      const y = (p[1] * scale + offset * 0.06) * (size - pad * 2) + pad;
       return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     }).join(" ");
   }
 
-  const layers = badge.curveType === "3d" ? Math.max(1, Math.round(badge.variation)) : 0;
+  const layers = badge.curveType === "3d" ? Math.max(2, Math.round(badge.variation)) : 0;
 
   return (
     <svg className="badge-mark" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="训练数据徽章">
@@ -655,16 +680,15 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
       <g clipPath={`url(#bc-${uid})`}>
         {badge.curveType === "2d" ? (
           <>
-            <path d={mainPath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity} />
-            <path d={secondPath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth * 0.7} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity * 0.85} />
-            {badge.hilbertPoints.length > 5 && (
-              <path d={accentPath(badge.hilbertPoints, badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
+            <path d={curvePath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity} />
+            {badge.mergedPoints.length > 5 && (
+              <path d={accentPath(badge.mergedPoints, badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
             )}
           </>
         ) : (
           <>
             {Array.from({ length: layers }, (_, i) => (
-              <path key={i} d={zorderPath(badge.zorderPoints, i)} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity * (0.5 + 0.5 * (i + 1) / layers)} />
+              <path key={i} d={zorderPath(badge.zorderPoints, i)} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity * (0.4 + 0.6 * (i + 1) / layers)} />
             ))}
             {badge.zorderPoints.length > 5 && (
               <path d={accentPath(badge.zorderPoints.map(p => [p[0], p[1]] as [number, number]), badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
@@ -689,12 +713,21 @@ function readBadges(): StoredBadge[] {
 }
 
 function isStoredBadge(value: unknown): value is StoredBadge {
-  return Boolean(
-    value &&
-    typeof value === "object" &&
-    typeof (value as StoredBadge).id === "string" &&
-    typeof (value as StoredBadge).timestamp === "number" &&
-    typeof (value as StoredBadge).curveType === "string",
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.timestamp === "number" &&
+    (v.curveType === "2d" || v.curveType === "3d") &&
+    Array.isArray(v.mergedPoints) &&
+    Array.isArray(v.zorderPoints) &&
+    typeof v.colorStart === "string" &&
+    typeof v.colorEnd === "string" &&
+    typeof v.colorInverted === "string" &&
+    typeof v.invertedPos === "number" &&
+    typeof v.strokeWidth === "number" &&
+    typeof v.opacity === "number" &&
+    typeof v.variation === "number"
   );
 }
 
