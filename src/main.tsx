@@ -30,12 +30,23 @@ type SessionMetric = {
   trajectories: { points: { x: number; y: number; height_m: number }[]; stroke: string }[];
 };
 
-type TimestampBadge = {
-  id: string;
-  timestamp: number;
+type BadgeData = {
+  curveType: "2d" | "3d";
+  hilbertPoints: [number, number][];
+  gosperPoints: [number, number][];
+  zorderPoints: [number, number, number][];
+  colorStart: string;
+  colorEnd: string;
+  colorInverted: string;
+  invertedPos: number;
+  strokeWidth: number;
+  opacity: number;
+  variation: number;
 };
 
-const badgeStorageKey = "vidi.timestamp-badges";
+type StoredBadge = BadgeData & { id: string; timestamp: number };
+
+const badgeStorageKey = "vidi.badges";
 
 function pct(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
@@ -67,8 +78,7 @@ function App() {
   const [subView, setSubView] = React.useState<OverviewSubView>("overview");
   const [baseMetrics, setBaseMetrics] = React.useState<SessionMetric[]>([]);
   const [selected, setSelected] = React.useState(0);
-  const [manualSessions, setManualSessions] = React.useState<SessionMetric[]>([]);
-  const metrics = [...baseMetrics, ...manualSessions];
+  const metrics = baseMetrics;
   const current = metrics[selected] || metrics[metrics.length - 1];
   const first = metrics[0];
   const latest = metrics[metrics.length - 1];
@@ -81,19 +91,6 @@ function App() {
   }, []);
 
   const improvement = first && latest ? (first.mistakeRate - latest.mistakeRate) / first.mistakeRate : 0;
-
-  async function addManualSession(form: FormData) {
-    const synthetic = await invoke<SessionMetric>("add_manual_session", {
-      theme: String(form.get("theme") || "自主训练"),
-      mistakeRate: Number(form.get("mistakeRate")) / 100,
-      deepRate: Number(form.get("deepRate")) / 100,
-      avgSpeed: Number(form.get("avgSpeed")),
-      maxHr: Number(form.get("maxHr")),
-    });
-    setManualSessions((items) => [...items, synthetic]);
-    setSelected(metrics.length);
-    setView("overview");
-  }
 
   if (!first) {
     return (
@@ -112,7 +109,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
+      <header className={`topbar${view !== "overview" ? " topbar--full" : ""}`}>
         <div>
           <p className="kicker">Vidi Tennis Intelligence</p>
           <h1>Vidi</h1>
@@ -153,7 +150,7 @@ function App() {
             {subView === "load" && <LoadView current={current} metrics={metrics} />}
           </>
         )}
-        {view === "mint" && <MintView onAdd={addManualSession} latest={latest} />}
+        {view === "mint" && <MintView latest={latest} />}
         {view === "mine" && <MineView />}
       </section>
 
@@ -366,102 +363,104 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
   );
 }
 
-function InputView({ onAdd, latest }: { onAdd: (form: FormData) => void; latest: SessionMetric }) {
+function MintView({ latest }: { latest?: SessionMetric }) {
+  const [badge, setBadge] = React.useState<StoredBadge | null>(null);
+  const [generating, setGenerating] = React.useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    setGenerating(true);
+    try {
+      const data = await invoke<BadgeData>("gen_badge", {
+        timestamp: new Date(String(form.get("timestamp"))).getTime(),
+        durationMin: Number(form.get("durationMin")),
+        totalShots: Number(form.get("totalShots")),
+        avgSpeed: Number(form.get("avgSpeed")),
+        avgApex: Number(form.get("avgApex")),
+        peakHr: Number(form.get("peakHr")),
+      });
+      const stored: StoredBadge = { ...data, id: `${Date.now()}`, timestamp: Date.now() };
+      setBadge(stored);
+      // Persist to localStorage
+      try {
+        const existing = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as StoredBadge[];
+        localStorage.setItem(badgeStorageKey, JSON.stringify([stored, ...existing].slice(0, 80)));
+      } catch { /* ignore */ }
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  const defaults = latest ? {
+    timestamp: new Date(latest.date).toISOString().slice(0, 16),
+    durationMin: 60,
+    totalShots: latest.shots,
+    avgSpeed: Math.round(latest.avgSpeed),
+    avgApex: 1.8,
+    peakHr: latest.maxHr,
+  } : { timestamp: "", durationMin: 60, totalShots: 1200, avgSpeed: 65, avgApex: 1.8, peakHr: 155 };
+
   return (
     <div className="grid-view">
       <Card className="wide-card">
         <div className="card-title">
-          <span>新增训练数据</span>
+          <span>训练数据录入</span>
           <Plus size={20} />
         </div>
-        <form
-          className="data-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onAdd(new FormData(event.currentTarget));
-            event.currentTarget.reset();
-          }}
-        >
+        <form className="data-form" onSubmit={handleSubmit}>
           <label>
-            训练主题
-            <input name="theme" defaultValue="自主训练" />
+            训练时间
+            <input name="timestamp" type="datetime-local" defaultValue={defaults.timestamp} required />
           </label>
           <label>
-            失误率 %
-            <input name="mistakeRate" type="number" min="1" max="60" step="0.1" defaultValue={Math.round(latest.mistakeRate * 1000) / 10} />
+            训练时长 (分钟)
+            <input name="durationMin" type="number" min="1" step="1" defaultValue={defaults.durationMin} required />
           </label>
           <label>
-            深区落点 %
-            <input name="deepRate" type="number" min="1" max="95" step="0.1" defaultValue={Math.round(latest.deepRate * 1000) / 10} />
+            总拍数
+            <input name="totalShots" type="number" min="1" step="1" defaultValue={defaults.totalShots} required />
           </label>
           <label>
-            平均球速
-            <input name="avgSpeed" type="number" min="30" max="180" step="1" defaultValue={Math.round(latest.avgSpeed)} />
+            回球速度均值 (km/h)
+            <input name="avgSpeed" type="number" min="1" step="0.1" defaultValue={defaults.avgSpeed} required />
           </label>
           <label>
-            最高心率
-            <input name="maxHr" type="number" min="80" max="210" step="1" defaultValue={latest.maxHr} />
+            轨迹顶点高度均值 (m)
+            <input name="avgApex" type="number" min="0.1" max="5" step="0.01" defaultValue={defaults.avgApex} required />
           </label>
-          <button type="submit">生成可视化</button>
+          <label>
+            心率峰值 (bpm)
+            <input name="peakHr" type="number" min="60" max="220" step="1" defaultValue={defaults.peakHr} required />
+          </label>
+          <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造徽章"}</button>
         </form>
       </Card>
-      <Card>
-        <div className="card-title">
-          <span>后续数据接口</span>
-          <span>Ready</span>
-        </div>
-        <p className="muted">当前版本用表单模拟用户输入。后续可将同一数据模型接入 Tauri 文件读取、手机端传感器、CSV 导入或云端账号同步。</p>
-      </Card>
-    </div>
-  );
-}
-
-function MintView({ onAdd, latest }: { onAdd: (form: FormData) => void; latest: SessionMetric }) {
-  const [badges, setBadges] = React.useState<TimestampBadge[]>(readBadges);
-
-  React.useEffect(() => {
-    try {
-      localStorage.setItem(badgeStorageKey, JSON.stringify(badges));
-    } catch {
-      // Local persistence can be disabled by the host webview.
-    }
-  }, [badges]);
-
-  function addBadge() {
-    const timestamp = Date.now();
-    setBadges((items) => [{ id: `${timestamp}-${items.length}`, timestamp }, ...items].slice(0, 80));
-  }
-
-  const latestBadge = badges[0];
-
-  return (
-    <div className="grid-view">
-      <InputView onAdd={onAdd} latest={latest} />
-      <Card className="badge-studio wide-card">
-        <div className="card-title">
-          <span>时间戳徽章铸造</span>
-          <Sparkles size={20} />
-        </div>
-        <div className="badge-studio-body">
-          <div className="badge-preview">
-            {latestBadge ? <BadgeMark badge={latestBadge} /> : <span className="badge-placeholder" aria-hidden="true" />}
+      {badge && (
+        <Card className="badge-studio wide-card">
+          <div className="card-title">
+            <span>铸造结果</span>
+            <Sparkles size={20} />
           </div>
-          <div className="badge-actions">
-            <strong>{latestBadge ? `#${latestBadge.timestamp}` : "新徽章"}</strong>
-            <p className="muted">{latestBadge ? formatMoment(latestBadge.timestamp) : "等待时间签名"}</p>
-            <button type="button" onClick={addBadge}>
-              <Plus size={20} />
-              <span>铸造徽章</span>
-            </button>
+          <div className="badge-studio-body">
+            <div className="badge-preview">
+              <BadgeMark badge={badge} />
+            </div>
+            <div className="badge-actions">
+              <strong>{badge.curveType === "2d" ? "Hilbert + Gosper" : "Z-Order 3D"}</strong>
+              <p className="muted">
+                线宽 {badge.strokeWidth.toFixed(1)} / 不透明度 {badge.opacity.toFixed(2)} / 变点 {badge.variation.toFixed(2)}
+              </p>
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
 
 function MineView() {
-  const [badges] = React.useState<TimestampBadge[]>(readBadges);
+  const [badges] = React.useState<StoredBadge[]>(readBadges);
 
   return (
     <div className="grid-view">
@@ -597,189 +596,106 @@ function TrajectoryStack({ trajectories }: { trajectories: SessionMetric["trajec
   );
 }
 
-function BadgeMark({ badge }: { badge: TimestampBadge }) {
-  const pattern = createBadgePattern(badge.timestamp);
+function BadgeMark({ badge }: { badge: StoredBadge }) {
+  const size = 200;
+  const pad = 10;
+  const uid = badge.id;
+
+  function ptsToPath(points: [number, number][]): string {
+    if (!points.length) return "";
+    return points.map((p, i) => {
+      const x = p[0] * (size - pad * 2) + pad;
+      const y = p[1] * (size - pad * 2) + pad;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+  }
+
+  // Inverted color accent segment around invertedPos
+  function accentPath(points: [number, number][], pos: number, width: number): string {
+    if (points.length < 10) return "";
+    const idx = Math.floor(pos * (points.length - 1));
+    const half = Math.max(3, Math.floor(width * points.length / 2));
+    const slice = points.slice(Math.max(0, idx - half), Math.min(points.length, idx + half));
+    return ptsToPath(slice);
+  }
+
+  const mainPath = badge.curveType === "2d"
+    ? ptsToPath(badge.hilbertPoints)
+    : "";
+
+  const secondPath = badge.curveType === "2d"
+    ? ptsToPath(badge.gosperPoints)
+    : "";
+
+  // 3D: project z-order points to 2D with perspective
+  function zorderPath(points: [number, number, number][], offset: number): string {
+    if (!points.length) return "";
+    return points.map((p, i) => {
+      const scale = 1.0 / (1.0 + p[2] * 0.3 + offset * 0.15);
+      const x = (p[0] * scale + offset * 0.04) * (size - pad * 2) + pad;
+      const y = (p[1] * scale + offset * 0.04) * (size - pad * 2) + pad;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+  }
+
+  const layers = badge.curveType === "3d" ? Math.max(1, Math.round(badge.variation)) : 0;
 
   return (
-    <svg className="badge-mark" viewBox="0 0 120 120" role="img" aria-label={`时间戳 ${badge.timestamp} 生成的徽章`}>
+    <svg className="badge-mark" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="训练数据徽章">
       <defs>
-        <clipPath id={`badge-clip-${badge.id}`}>
-          <circle cx="60" cy="60" r="54" />
+        <clipPath id={`bc-${uid}`}>
+          <circle cx={size / 2} cy={size / 2} r={size / 2 - 6} />
         </clipPath>
-        <linearGradient id={`badge-bg-${badge.id}`} x1={`${pattern.angle}%`} y1="4%" x2={`${100 - pattern.angle}%`} y2="100%">
-          <stop offset="0%" stopColor={pattern.mint} />
-          <stop offset="48%" stopColor={pattern.green} />
-          <stop offset="100%" stopColor={pattern.deep} />
+        <linearGradient id={`bg-${uid}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={badge.colorStart} />
+          <stop offset="100%" stopColor={badge.colorEnd} />
         </linearGradient>
-        <radialGradient id={`badge-glow-${badge.id}`} cx={`${pattern.glow.x}%`} cy={`${pattern.glow.y}%`} r="68%">
-          <stop offset="0%" stopColor={pattern.glow.color} stopOpacity="0.92" />
-          <stop offset="56%" stopColor={pattern.glow.color} stopOpacity="0.22" />
-          <stop offset="100%" stopColor={pattern.glow.color} stopOpacity="0" />
-        </radialGradient>
-        <filter id={`badge-soft-${badge.id}`} x="-30%" y="-30%" width="160%" height="160%">
-          <feGaussianBlur stdDeviation="9" />
-        </filter>
       </defs>
-      <circle cx="60" cy="60" r="56" className="badge-ring" />
-      <g clipPath={`url(#badge-clip-${badge.id})`}>
-        <rect width="120" height="120" fill={`url(#badge-bg-${badge.id})`} />
-        <rect width="120" height="120" fill={`url(#badge-glow-${badge.id})`} />
-        {pattern.blooms.map((bloom, index) => (
-          <ellipse
-            key={`${bloom.x}-${bloom.y}-${index}`}
-            cx={bloom.x}
-            cy={bloom.y}
-            rx={bloom.rx}
-            ry={bloom.ry}
-            fill={bloom.color}
-            opacity={bloom.opacity}
-            filter={`url(#badge-soft-${badge.id})`}
-            transform={`rotate(${bloom.rotate} ${bloom.x} ${bloom.y})`}
-          />
-        ))}
-        {pattern.streams.map((stream, index) => (
-          <g key={`${stream.path}-${index}`} opacity={stream.opacity}>
-            <path d={stream.path} className="badge-river" style={{ strokeWidth: stream.width }} />
-            <path d={stream.highlight} className="badge-river-highlight" style={{ strokeWidth: stream.highlightWidth }} />
-          </g>
-        ))}
-        {pattern.glints.map((glint, index) => (
-          <circle
-            key={`${glint.x}-${glint.y}-${index}`}
-            cx={glint.x}
-            cy={glint.y}
-            r={glint.radius}
-            className="badge-glint"
-            opacity={glint.opacity}
-          />
-        ))}
-        <path d={pattern.sheen} className="badge-sheen" />
+      <circle cx={size / 2} cy={size / 2} r={size / 2 - 4} className="badge-ring" />
+      <g clipPath={`url(#bc-${uid})`}>
+        {badge.curveType === "2d" ? (
+          <>
+            <path d={mainPath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity} />
+            <path d={secondPath} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth * 0.7} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity * 0.85} />
+            {badge.hilbertPoints.length > 5 && (
+              <path d={accentPath(badge.hilbertPoints, badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
+            )}
+          </>
+        ) : (
+          <>
+            {Array.from({ length: layers }, (_, i) => (
+              <path key={i} d={zorderPath(badge.zorderPoints, i)} fill="none" stroke={`url(#bg-${uid})`} strokeWidth={badge.strokeWidth} strokeLinecap="round" strokeLinejoin="round" opacity={badge.opacity * (0.5 + 0.5 * (i + 1) / layers)} />
+            ))}
+            {badge.zorderPoints.length > 5 && (
+              <path d={accentPath(badge.zorderPoints.map(p => [p[0], p[1]] as [number, number]), badge.invertedPos, 0.06)} fill="none" stroke={badge.colorInverted} strokeWidth={badge.strokeWidth * 1.5} strokeLinecap="round" opacity={0.9} />
+            )}
+          </>
+        )}
       </g>
     </svg>
   );
 }
 
-function readBadges(): TimestampBadge[] {
+function readBadges(): StoredBadge[] {
   try {
     const stored = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as unknown;
     if (!Array.isArray(stored)) {
       return [];
     }
-
-    return stored.filter(isTimestampBadge).slice(0, 80);
+    return stored.filter(isStoredBadge).slice(0, 80);
   } catch {
     return [];
   }
 }
 
-function isTimestampBadge(value: unknown): value is TimestampBadge {
+function isStoredBadge(value: unknown): value is StoredBadge {
   return Boolean(
     value &&
     typeof value === "object" &&
-    typeof (value as TimestampBadge).id === "string" &&
-    typeof (value as TimestampBadge).timestamp === "number",
+    typeof (value as StoredBadge).id === "string" &&
+    typeof (value as StoredBadge).timestamp === "number" &&
+    typeof (value as StoredBadge).curveType === "string",
   );
-}
-
-function createBadgePattern(timestamp: number) {
-  let state = mixSeed(timestamp);
-  const next = () => {
-    state = Math.imul(state ^ (state >>> 15), 2246822519);
-    state = Math.imul(state ^ (state >>> 13), 3266489917);
-    return ((state ^= state >>> 16) >>> 0) / 4294967296;
-  };
-  const hue = Math.floor(112 + next() * 34);
-  const streamCount = 2 + Math.floor(next() * 3);
-
-  return {
-    angle: 14 + next() * 26,
-    mint: `hsl(${hue - 18} 74% 91%)`,
-    green: `hsl(${hue} 66% 62%)`,
-    deep: `hsl(${hue + 8} 68% 32%)`,
-    glow: {
-      x: 24 + next() * 34,
-      y: 18 + next() * 34,
-      color: `hsl(${hue - 30} 88% 92%)`,
-    },
-    blooms: [
-      createBadgeBloom(next, hue - 12, 0.4),
-      createBadgeBloom(next, hue + 8, 0.34),
-      createBadgeBloom(next, hue - 26, 0.26),
-    ],
-    streams: Array.from({ length: streamCount }, (_, index) => createBadgeStream(next, index)),
-    glints: Array.from({ length: 2 + Math.floor(next() * 4) }, () => createBadgeGlint(next)),
-    sheen: createBadgeSheen(next),
-  };
-}
-
-function createBadgeBloom(next: () => number, hue: number, opacity: number) {
-  return {
-    x: 14 + next() * 92,
-    y: 16 + next() * 88,
-    rx: 18 + next() * 30,
-    ry: 14 + next() * 24,
-    rotate: -46 + next() * 92,
-    color: `hsl(${hue} ${62 + next() * 20}% ${64 + next() * 18}%)`,
-    opacity,
-  };
-}
-
-function createBadgeStream(next: () => number, index: number) {
-  const startSide = next() > 0.5;
-  const startX = startSide ? -18 : 138;
-  const endX = startSide ? 138 : -18;
-  const startY = 10 + next() * 100;
-  const endY = 10 + next() * 100;
-  const bendA = startSide ? 16 + next() * 38 : 104 - next() * 38;
-  const bendB = startSide ? 76 + next() * 42 : 44 - next() * 42;
-  const driftA = clampPoint(startY + (next() - 0.5) * (68 + index * 8));
-  const driftB = clampPoint(endY + (next() - 0.5) * (76 + index * 10));
-  const path = `M${startX} ${startY}C${bendA} ${driftA} ${bendB} ${driftB} ${endX} ${endY}`;
-  const offset = -10 + next() * 20;
-  const highlight = `M${startX} ${clampPoint(startY + offset)}C${bendA + (next() - 0.5) * 12} ${clampPoint(driftA + offset * 0.7)} ${bendB + (next() - 0.5) * 12} ${clampPoint(driftB - offset * 0.5)} ${endX} ${clampPoint(endY - offset * 0.35)}`;
-
-  return {
-    path,
-    highlight,
-    width: 14 + next() * (index ? 18 : 30),
-    highlightWidth: 3 + next() * 7,
-    opacity: 0.24 + next() * 0.34,
-  };
-}
-
-function createBadgeGlint(next: () => number) {
-  return {
-    x: 20 + next() * 80,
-    y: 18 + next() * 84,
-    radius: 1.4 + next() * 4.8,
-    opacity: 0.18 + next() * 0.42,
-  };
-}
-
-function createBadgeSheen(next: () => number) {
-  const start = 12 + next() * 18;
-  const end = 82 + next() * 24;
-  const lift = 6 + next() * 18;
-  return `M${start} ${24 + next() * 16}C${30 + next() * 16} ${lift} ${62 + next() * 18} ${lift - 2 + next() * 12} ${end} ${22 + next() * 18}`;
-}
-
-function clampPoint(value: number) {
-  return Math.max(-12, Math.min(132, value));
-}
-
-function mixSeed(timestamp: number) {
-  return Math.imul(timestamp ^ (timestamp >>> 16), 2654435761) >>> 0;
-}
-
-function formatMoment(timestamp: number) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(timestamp));
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

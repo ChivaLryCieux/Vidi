@@ -1,3 +1,4 @@
+use crate::badge::{generate_badge, BadgeData};
 use crate::data::load_all_sessions;
 use crate::metrics::{build_manual_session, build_metric, SessionMetric};
 
@@ -20,4 +21,16 @@ pub fn add_manual_session(
     let latest = metrics.last().expect("no sessions available");
     let next_index = metrics.len() as i64 + 1;
     build_manual_session(&theme, mistake_rate, deep_rate, avg_speed, max_hr, next_index, latest)
+}
+
+#[tauri::command]
+pub fn gen_badge(
+    timestamp: i64,
+    duration_min: f64,
+    total_shots: i64,
+    avg_speed: f64,
+    avg_apex: f64,
+    peak_hr: f64,
+) -> BadgeData {
+    generate_badge(timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr)
 }

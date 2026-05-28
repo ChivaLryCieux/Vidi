@@ -74,7 +74,6 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  overflow: hidden;
   border-radius: 30px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 247, 0.38)),
@@ -981,9 +980,18 @@ input:focus-visible {
     grid-column: 1;
   }
 
+  .topbar--full {
+    grid-column: 1 / -1;
+  }
+
   .view-frame {
     grid-column: 2;
     grid-row: 1 / 4;
+  }
+
+  .app-shell--full .view-frame {
+    grid-column: 1 / -1;
+    grid-row: auto;
   }
 
   .session-rail {

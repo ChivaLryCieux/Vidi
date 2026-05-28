@@ -1,3 +1,4 @@
+mod badge;
 mod commands;
 mod data;
 mod metrics;
@@ -8,7 +9,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
-            commands::add_manual_session
+            commands::add_manual_session,
+            commands::gen_badge
         ])
         .run(tauri::generate_context!())
         .expect("error while running Vidi");
