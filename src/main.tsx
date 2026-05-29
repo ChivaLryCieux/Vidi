@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
-import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy } from "lucide-react";
+import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, ExternalLink, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy, Wallet } from "lucide-react";
 import "./styles.css";
 
 type SessionMetric = {
@@ -53,6 +53,16 @@ type StoredBadge = BadgeData & { id: string; timestamp: number };
 
 const badgeStorageKey = "vidi.badges";
 type MintMode = "normal" | "hidden" | "hiddenBlack";
+type EthereumProvider = {
+  isMetaMask?: boolean;
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
 
 function pct(value: number) {
   return `${Math.round(value * 1000) / 10}%`;
@@ -60,6 +70,10 @@ function pct(value: number) {
 
 function cnDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(new Date(value));
+}
+
+function shortAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 const navItems = [
@@ -511,9 +525,69 @@ function MintView({ latest }: { latest?: SessionMetric }) {
 
 function MineView() {
   const [badges] = React.useState<StoredBadge[]>(readBadges);
+  const [walletAddress, setWalletAddress] = React.useState("");
+  const [walletError, setWalletError] = React.useState("");
+  const [connecting, setConnecting] = React.useState(false);
+
+  async function connectInjectedWallet() {
+    setWalletError("");
+    if (!window.ethereum) {
+      setWalletError("未检测到 MetaMask 注入钱包。移动端可尝试打开 MetaMask 入口，正式版本建议接入 WalletConnect。");
+      return;
+    }
+    setConnecting(true);
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const [account] = Array.isArray(accounts) ? accounts : [];
+      if (typeof account === "string") {
+        setWalletAddress(account);
+      } else {
+        setWalletError("钱包没有返回可用地址。");
+      }
+    } catch (err) {
+      setWalletError(`连接失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  function openMetaMaskMobile() {
+    const current = window.location.href;
+    const canOpenDapp = /^https?:\/\//.test(current) && !current.includes("localhost") && !current.includes("tauri.localhost");
+    const target = canOpenDapp
+      ? `https://metamask.app.link/dapp/${current.replace(/^https?:\/\//, "")}`
+      : "https://metamask.app.link";
+    window.open(target, "_blank", "noopener,noreferrer");
+  }
 
   return (
     <div className="grid-view">
+      <Card className="wide-card wallet-card">
+        <div className="card-title">
+          <span>钱包连接</span>
+          <Wallet size={20} />
+        </div>
+        <div className="wallet-panel">
+          <div>
+            <strong>{walletAddress ? shortAddress(walletAddress) : "未连接钱包"}</strong>
+            {walletAddress && <p className="muted">当前地址将用于后续 Vidi Badge NFT 铸造与链上归属。</p>}
+          </div>
+          <div className="wallet-actions">
+            {walletAddress ? (
+              <button type="button" onClick={() => setWalletAddress("")}>断开连接</button>
+            ) : (
+              <button type="button" disabled={connecting} onClick={connectInjectedWallet}>
+                {connecting ? "连接中..." : "连接 MetaMask"}
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={openMetaMaskMobile}>
+              <ExternalLink size={16} />
+              打开 MetaMask
+            </button>
+          </div>
+        </div>
+        {walletError && <p className="wallet-error">{walletError}</p>}
+      </Card>
       <Card className="wide-card">
         <div className="card-title">
           <span>我的徽章</span>
