@@ -2,6 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, ExternalLink, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy, Wallet } from "lucide-react";
+import * as THREE from "three";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import polyModelUrl from "../Poly-1.glb?url";
 import "./styles.css";
 
 type SessionMetric = {
@@ -156,6 +160,9 @@ function App() {
 
       {view === "overview" && (
         <>
+          <section className="poly-hero">
+            <PolyModel />
+          </section>
           <section className="hero-strip">
             <div>
               <span>半年度成长叙事</span>
@@ -204,6 +211,157 @@ function App() {
       </nav>
     </main>
   );
+}
+
+function PolyModel() {
+  const mountRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+    camera.position.set(0, 0.18, 3.4);
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+    mount.appendChild(renderer.domElement);
+
+    const keyLight = new THREE.DirectionalLight(0xd6f36d, 3.2);
+    keyLight.position.set(2.2, 3.2, 3.6);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x21844e, 2.1);
+    fillLight.position.set(-3.4, 1.1, 2.5);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.PointLight(0xffffff, 2.2, 9);
+    rimLight.position.set(0, -1.5, 3.2);
+    scene.add(rimLight);
+    scene.add(new THREE.AmbientLight(0xf6fff0, 1.2));
+
+    const gradientCanvas = document.createElement("canvas");
+    gradientCanvas.width = 256;
+    gradientCanvas.height = 256;
+    const ctx = gradientCanvas.getContext("2d");
+    if (ctx) {
+      const gradient = ctx.createLinearGradient(0, 0, 256, 256);
+      gradient.addColorStop(0, "#fafff4");
+      gradient.addColorStop(0.45, "#d6f36d");
+      gradient.addColorStop(1, "#21844e");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 256, 256);
+    }
+    const environment = new THREE.CanvasTexture(gradientCanvas);
+    environment.colorSpace = THREE.SRGBColorSpace;
+    scene.environment = environment;
+
+    const modelGroup = new THREE.Group();
+    modelGroup.position.y = 0.16;
+    scene.add(modelGroup);
+
+    let disposed = false;
+    const fallbackMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf7fff0,
+      metalness: 0.2,
+      roughness: 0.26,
+      emissive: 0x21844e,
+      emissiveIntensity: 0.08,
+      wireframe: true,
+    });
+    const fallback = new THREE.Mesh(new THREE.IcosahedronGeometry(0.92, 1), fallbackMaterial);
+    fallback.rotation.set(-0.25, 0.55, 0.1);
+    modelGroup.add(fallback);
+
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath("/draco/");
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(dracoLoader);
+    loader.load(polyModelUrl, (gltf) => {
+      if (disposed) return;
+      fallback.visible = false;
+      const model = gltf.scene;
+      model.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.castShadow = false;
+          object.receiveShadow = false;
+          const original = object.material;
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xf7fff0,
+            metalness: 0.18,
+            roughness: 0.28,
+            emissive: 0x13321f,
+            emissiveIntensity: 0.05,
+          });
+          if (Array.isArray(original)) {
+            original.forEach((item) => item.dispose());
+          } else {
+            original?.dispose();
+          }
+          object.material = material;
+        }
+      });
+
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
+      model.position.sub(center);
+      model.scale.setScalar(1.8 / maxDimension);
+      model.rotation.set(-0.28, 0.62, 0.08);
+      modelGroup.add(model);
+    }, undefined, (error) => {
+      console.error("Failed to load Poly-1.glb", error);
+    });
+
+    const resize = () => {
+      const rect = mount.getBoundingClientRect();
+      const width = Math.max(1, rect.width);
+      const height = Math.max(1, rect.height);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+
+    let frame = 0;
+    const animate = () => {
+      if (disposed) return;
+      frame = requestAnimationFrame(animate);
+      modelGroup.rotation.y += 0.0026;
+      modelGroup.rotation.x = Math.sin(performance.now() * 0.0012) * 0.05;
+      renderer.render(scene, camera);
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(mount);
+    resize();
+    animate();
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      environment.dispose();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          const material = object.material;
+          if (Array.isArray(material)) {
+            material.forEach((item) => item.dispose());
+          } else {
+            material.dispose();
+          }
+        }
+      });
+      renderer.dispose();
+      dracoLoader.dispose();
+      renderer.domElement.remove();
+    };
+  }, []);
+
+  return <div className="poly-model" ref={mountRef} aria-label="Vidi 3D model" />;
 }
 
 function SessionRail({ metrics, selected, onSelect }: { metrics: SessionMetric[]; selected: number; onSelect: (value: number) => void }) {
