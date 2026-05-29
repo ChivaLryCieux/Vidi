@@ -56,6 +56,7 @@ type BadgeData = {
 type StoredBadge = BadgeData & { id: string; timestamp: number };
 
 const badgeStorageKey = "vidi.badges";
+const badgeStorageLimit = 36;
 type MintMode = "normal" | "hidden" | "hiddenBlack";
 type EthereumProvider = {
   isMetaMask?: boolean;
@@ -584,11 +585,13 @@ function MintView({ latest }: { latest?: SessionMetric }) {
         peakHr: Number(form.get("peakHr")),
       });
       const stored: StoredBadge = { ...data, id: `${mintedAt}-${mode}`, timestamp: mintedAt };
-      setBadge(stored);
+      const compactStored = compactBadgeForStorage(stored);
+      setBadge(compactStored);
       try {
-        const existing = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as StoredBadge[];
-        localStorage.setItem(badgeStorageKey, JSON.stringify([stored, ...existing].slice(0, 80)));
-      } catch { /* ignore */ }
+        writeBadges([compactStored, ...readBadges()]);
+      } catch (storageErr) {
+        setError(`徽章已生成，但本地保存失败: ${storageErr instanceof Error ? storageErr.message : String(storageErr)}`);
+      }
     } catch (err) {
       setError(`${mode === "normal" ? "铸造" : "隐藏款铸造"}失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -759,6 +762,7 @@ function MineView() {
                 <figcaption>
                   <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
                   <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
+                  <span className="badge-price">$0.01</span>
                 </figcaption>
               </figure>
             ))}
@@ -1098,10 +1102,57 @@ function readBadges(): StoredBadge[] {
     if (!Array.isArray(stored)) {
       return [];
     }
-    return stored.filter(isStoredBadge).slice(0, 80);
+    return stored.filter(isStoredBadge).slice(0, badgeStorageLimit);
   } catch {
     return [];
   }
+}
+
+function writeBadges(badges: StoredBadge[]) {
+  const compacted = badges.map(compactBadgeForStorage);
+  let limit = Math.min(compacted.length, badgeStorageLimit);
+  let lastError: unknown = null;
+
+  while (limit > 0) {
+    try {
+      localStorage.setItem(badgeStorageKey, JSON.stringify(compacted.slice(0, limit)));
+      return;
+    } catch (err) {
+      lastError = err;
+      limit = Math.floor(limit / 2);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("本地存储空间不足。");
+}
+
+function compactBadgeForStorage(badge: StoredBadge): StoredBadge {
+  return {
+    ...badge,
+    mergedPoints: badge.mergedPoints.map(compactPoint2),
+    zorderPoints: badge.zorderPoints.map(compactPoint3),
+    ringPanels: badge.ringPanels?.map((panel) => ({
+      ...panel,
+      opacity: compactNumber(panel.opacity),
+      points: panel.points.map(compactPoint2) as [[number, number], [number, number], [number, number], [number, number]],
+    })),
+    invertedPos: compactNumber(badge.invertedPos),
+    strokeWidth: compactNumber(badge.strokeWidth),
+    opacity: compactNumber(badge.opacity),
+    variation: compactNumber(badge.variation),
+  };
+}
+
+function compactNumber(value: number) {
+  return Math.round(value * 10000) / 10000;
+}
+
+function compactPoint2(point: [number, number]): [number, number] {
+  return [compactNumber(point[0]), compactNumber(point[1])];
+}
+
+function compactPoint3(point: [number, number, number]): [number, number, number] {
+  return [compactNumber(point[0]), compactNumber(point[1]), compactNumber(point[2])];
 }
 
 function isStoredBadge(value: unknown): value is StoredBadge {
