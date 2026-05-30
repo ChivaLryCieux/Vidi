@@ -31,7 +31,7 @@ type SessionMetric = {
 };
 
 type BadgeData = {
-  curveType: "2d" | "3d" | "rings" | "ringsBlack";
+  curveType: "2d" | "3d" | "rings" | "ringsBlack" | "parametric3d";
   mergedPoints: [number, number][];
   zorderPoints: [number, number, number][];
   ringPanels?: {
@@ -478,10 +478,10 @@ function MintView({ latest }: { latest?: SessionMetric }) {
           </label>
           <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造徽章"}</button>
           <button className="secondary" type="button" disabled={generating} onClick={() => handleHiddenMint("hidden")}>
-            铸造隐藏款
+            铸造隐藏款1
           </button>
           <button className="secondary black" type="button" disabled={generating} onClick={() => handleHiddenMint("hiddenBlack")}>
-            铸造隐藏款：纯黑
+            铸造隐藏款2
           </button>
         </form>
         {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
@@ -540,8 +540,9 @@ function MineView() {
 }
 
 function badgeTitle(badge: StoredBadge) {
-  if (badge.curveType === "ringsBlack") return "Hidden Black Rings";
-  if (badge.curveType === "rings") return "Hidden Ribbon Rings";
+  if (badge.curveType === "ringsBlack" || badge.id.includes("hiddenBlack")) return "Obsidian Vector Flow Field";
+  if (badge.curveType === "rings" || badge.id.includes("hidden")) return "Iridescent Vector Flow Field";
+  if (badge.curveType === "parametric3d") return "Standard Vector Flow Field";
   if (badge.curveType === "2d") return "Gosper 2D";
   return "Z-Order 3D";
 }
@@ -761,6 +762,7 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   const ringPanels = badge.ringPanels ?? [];
   const isRingBadge = badge.curveType === "rings" || badge.curveType === "ringsBlack";
   const isBlackRing = badge.curveType === "ringsBlack";
+  const isParametric = badge.curveType === "parametric3d";
   const hasRingBackground = ringPanels.length > 0;
   const isWhiteCurve = badge.colorStart.includes("255");
   const regularBackground = isWhiteCurve ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)";
@@ -768,9 +770,11 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   const ringFrameBase = hasRingBackground
     ? fitCircleFrame(ringPanels.flatMap((panel) => panel.points))
     : undefined;
-  const ringFrame = ringFrameBase && !isRingBadge
-    ? { ...ringFrameBase, scale: ringFrameBase.scale * 1.41 }
-    : ringFrameBase;
+  const ringFrame = isParametric
+    ? undefined
+    : (ringFrameBase && !isRingBadge
+      ? { ...ringFrameBase, scale: ringFrameBase.scale * 1.41 }
+      : ringFrameBase);
   function panelPoints(panel: NonNullable<BadgeData["ringPanels"]>[number], frame = ringFrame) {
     const activeFrame = frame ?? { cx: 0.5, cy: 0.5, scale: 1 };
     return panel.points.map((point) => {
@@ -795,64 +799,83 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
       </defs>
       <circle cx={size / 2} cy={size / 2} r={size / 2 - 4} className="badge-ring" />
       <g clipPath={`url(#bc-${uid})`}>
-        {!isRingBadge && (
-          <circle cx={size / 2} cy={size / 2} r={size / 2 - 6} fill={regularBackground} />
-        )}
-        {!isRingBadge && hasRingBackground && (
-          <g>
-            {ringPanels.map((panel, index) => (
-              <polygon
-                key={`bg-${index}-${panel.front ? "f" : "b"}`}
-                points={panelPoints(panel)}
-                fill={panel.color}
-                opacity={1}
-                stroke="rgba(255,255,255,0.18)"
-                strokeWidth={0.42}
-                strokeLinejoin="round"
-              />
-            ))}
-          </g>
-        )}
-        {isRingBadge ? (
+        {isParametric ? (
           <>
-            <circle cx={size / 2} cy={size / 2} r={size / 2 - 18} fill={isBlackRing ? "rgba(0,0,0,0.025)" : "rgba(255,255,248,0.18)"} />
+            <circle cx={size / 2} cy={size / 2} r={size / 2 - 6} fill="#ffffff" />
             {ringPanels.map((panel, index) => (
               <polygon
-                key={`${index}-${panel.front ? "f" : "b"}`}
+                key={`param-${index}`}
                 points={panelPoints(panel)}
                 fill={panel.color}
                 opacity={panel.opacity}
-                stroke={isBlackRing ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.24)"}
-                strokeWidth={isBlackRing ? 0.35 : 0.6}
+                stroke={panel.color}
+                strokeWidth={0.25}
                 strokeLinejoin="round"
               />
             ))}
-            {!isBlackRing && (
-              <>
-                <ellipse cx={size / 2} cy={size * 0.5} rx={size * 0.34} ry={size * 0.12} className="badge-rings-orbit" />
-                <path d={`M${size * 0.22},${size * 0.36} C${size * 0.42},${size * 0.2} ${size * 0.66},${size * 0.74} ${size * 0.82},${size * 0.48}`} className="badge-sheen" opacity={0.28} />
-              </>
-            )}
-          </>
-        ) : badge.curveType === "2d" ? (
-          <>
-            <path d={curvePath} fill="none" stroke={contrastStroke} strokeWidth={badge.strokeWidth * 2.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.72} />
-            <path d={curvePath} fill="none" stroke={badge.colorStart} strokeWidth={badge.strokeWidth * 1.55} strokeLinecap="round" strokeLinejoin="round" opacity={1} />
           </>
         ) : (
           <>
-            {zLayerOffsets.map((offset, index) => (
-              <path
-                key={offset}
-                d={ptsToPath(projectZorder(zVisiblePoints, offset), zFrame)}
-                fill="none"
-                stroke={index === 0 ? contrastStroke : badge.colorStart}
-                strokeWidth={badge.strokeWidth * (index === 0 ? 2.4 : 1.55)}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={index === 0 ? 0.72 : 1}
-              />
-            ))}
+            {!isRingBadge && (
+              <circle cx={size / 2} cy={size / 2} r={size / 2 - 6} fill={regularBackground} />
+            )}
+            {!isRingBadge && hasRingBackground && (
+              <g>
+                {ringPanels.map((panel, index) => (
+                  <polygon
+                    key={`bg-${index}-${panel.front ? "f" : "b"}`}
+                    points={panelPoints(panel)}
+                    fill={panel.color}
+                    opacity={1}
+                    stroke="rgba(255,255,255,0.18)"
+                    strokeWidth={0.42}
+                    strokeLinejoin="round"
+                  />
+                ))}
+              </g>
+            )}
+            {isRingBadge ? (
+              <>
+                <circle cx={size / 2} cy={size / 2} r={size / 2 - 18} fill={isBlackRing ? "rgba(0,0,0,0.025)" : "rgba(255,255,248,0.18)"} />
+                {ringPanels.map((panel, index) => (
+                  <polygon
+                    key={`${index}-${panel.front ? "f" : "b"}`}
+                    points={panelPoints(panel)}
+                    fill={panel.color}
+                    opacity={panel.opacity}
+                    stroke={isBlackRing ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.24)"}
+                    strokeWidth={isBlackRing ? 0.35 : 0.6}
+                    strokeLinejoin="round"
+                  />
+                ))}
+                {!isBlackRing && (
+                  <>
+                    <ellipse cx={size / 2} cy={size * 0.5} rx={size * 0.34} ry={size * 0.12} className="badge-rings-orbit" />
+                    <path d={`M${size * 0.22},${size * 0.36} C${size * 0.42},${size * 0.2} ${size * 0.66},${size * 0.74} ${size * 0.82},${size * 0.48}`} className="badge-sheen" opacity={0.28} />
+                  </>
+                )}
+              </>
+            ) : badge.curveType === "2d" ? (
+              <>
+                <path d={curvePath} fill="none" stroke={contrastStroke} strokeWidth={badge.strokeWidth * 2.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.72} />
+                <path d={curvePath} fill="none" stroke={badge.colorStart} strokeWidth={badge.strokeWidth * 1.55} strokeLinecap="round" strokeLinejoin="round" opacity={1} />
+              </>
+            ) : (
+              <>
+                {zLayerOffsets.map((offset, index) => (
+                  <path
+                    key={offset}
+                    d={ptsToPath(projectZorder(zVisiblePoints, offset), zFrame)}
+                    fill="none"
+                    stroke={index === 0 ? contrastStroke : badge.colorStart}
+                    strokeWidth={badge.strokeWidth * (index === 0 ? 2.4 : 1.55)}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={index === 0 ? 0.72 : 1}
+                  />
+                ))}
+              </>
+            )}
           </>
         )}
       </g>
@@ -878,7 +901,7 @@ function isStoredBadge(value: unknown): value is StoredBadge {
   return (
     typeof v.id === "string" &&
     typeof v.timestamp === "number" &&
-    (v.curveType === "2d" || v.curveType === "3d" || v.curveType === "rings" || v.curveType === "ringsBlack") &&
+    (v.curveType === "2d" || v.curveType === "3d" || v.curveType === "rings" || v.curveType === "ringsBlack" || v.curveType === "parametric3d") &&
     Array.isArray(v.mergedPoints) &&
     Array.isArray(v.zorderPoints) &&
     (v.ringPanels === undefined || Array.isArray(v.ringPanels)) &&
