@@ -1,8 +1,37 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
-import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, Grid2X2, LineChart, Plus, Radar, Sparkles, Target, Trophy } from "lucide-react";
+import { Activity, ArrowDownUp, CircleUserRound, Download, Dumbbell, Grid2X2, LineChart, Plus, Radar, Share2, Sparkles, Target, Trophy, X } from "lucide-react";
 import "./styles.css";
+
+// ── Scroll-reveal hook: staggers card entrance as they scroll into view ──
+function useScrollReveal() {
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const container = ref.current;
+    if (!container) return;
+    const cards = container.querySelectorAll(".card");
+    if (!cards.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            (entry.target as HTMLElement).classList.add("visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.08, rootMargin: "0px 0px -40px 0px" },
+    );
+    // Stagger delay for each card
+    cards.forEach((card, i) => {
+      (card as HTMLElement).style.transitionDelay = `${i * 70}ms`;
+      observer.observe(card);
+    });
+    return () => observer.disconnect();
+  });
+  return ref;
+}
 
 type SessionMetric = {
   id: string;
@@ -27,7 +56,7 @@ type SessionMetric = {
   phaseStats: { phase: string; shots: number; mistakes: number; rate: number }[];
   strokeStats: { stroke: string; shots: number; mistakes: number; rate: number; speed: number }[];
   landing: { x: number; y: number; mistake: boolean; stroke: string; speed: number }[];
-  trajectories: { points: { x: number; y: number; height_m: number }[]; stroke: string }[];
+  trajectories: { points: { x: number; y: number; heightM: number }[]; stroke: string }[];
 };
 
 type BadgeData = {
@@ -49,7 +78,15 @@ type BadgeData = {
   variation: number;
 };
 
-type StoredBadge = BadgeData & { id: string; timestamp: number };
+type StoredBadge = BadgeData & {
+  id: string;
+  timestamp: number;
+  durationMin?: number;
+  totalShots?: number;
+  avgSpeed?: number;
+  avgApex?: number;
+  peakHr?: number;
+};
 
 const badgeStorageKey = "vidi.badges";
 type MintMode = "normal" | "hidden" | "hiddenBlack";
@@ -84,12 +121,22 @@ function App() {
   const [subView, setSubView] = React.useState<OverviewSubView>("overview");
   const [baseMetrics, setBaseMetrics] = React.useState<SessionMetric[]>([]);
   const [selected, setSelected] = React.useState(0);
+  const [badges, setBadges] = React.useState<StoredBadge[]>([]);
   const metrics = baseMetrics;
   const current = metrics[selected] || metrics[metrics.length - 1];
   const first = metrics[0];
   const latest = metrics[metrics.length - 1];
 
   React.useEffect(() => {
+    // Clear history once on load of this version to satisfy history cleanup
+    const versionClearedKey = "vidi.cleared_v2";
+    if (!localStorage.getItem(versionClearedKey)) {
+      localStorage.removeItem(badgeStorageKey);
+      localStorage.setItem(versionClearedKey, "true");
+    }
+
+    setBadges(readBadges());
+
     invoke<SessionMetric[]>("get_sessions")
       .then((sessions) => {
         setBaseMetrics(sessions);
@@ -100,17 +147,14 @@ function App() {
       });
   }, []);
 
-  const improvement = first && latest ? (first.mistakeRate - latest.mistakeRate) / first.mistakeRate : 0;
+  const improvement = first && current ? (first.mistakeRate - current.mistakeRate) / first.mistakeRate : 0;
+  const visibleMetrics = metrics.slice(0, selected + 1);
 
   if (!metrics.length) {
     return (
       <main className="app-shell">
-        <header className="topbar">
-          <div>
-            <p className="kicker">Vidi Tennis Intelligence</p>
-            <h1>Vidi</h1>
-          </div>
-          <div className="mark" aria-label="Vidi mark">V</div>
+        <header className="page-header">
+          <h1>数据载入中...</h1>
         </header>
         <section className="view-frame">
           <p className="muted" style={{ marginTop: 24, textAlign: "center" }}>加载训练数据中...</p>
@@ -132,28 +176,26 @@ function App() {
 
   return (
     <main className={`app-shell${view !== "overview" ? " app-shell--full" : ""}`}>
-      <header className="topbar">
-        <div>
-          <p className="kicker">Vidi Tennis Intelligence</p>
-          <h1>Vidi</h1>
-        </div>
-        <div className="mark" aria-label="Vidi mark">V</div>
-      </header>
-
       {view === "overview" && (
         <>
-          <section className="hero-strip">
-            <div>
-              <span>半年度成长叙事</span>
-              <strong>{pct(improvement)} 失误率改善</strong>
-            </div>
-            <Sparkles size={28} />
-          </section>
+          <header className="page-header">
+            <h1>你的进步：  {pct(improvement)}</h1>
+          </header>
           <SessionRail metrics={metrics} selected={selected} onSelect={setSelected} />
         </>
       )}
+      {view === "mint" && (
+        <header className="page-header">
+          <h1>铸造你的徽章</h1>
+        </header>
+      )}
+      {view === "mine" && (
+        <header className="page-header">
+          <h1>你已收集 {badges.length} 枚徽章</h1>
+        </header>
+      )}
 
-      <section className="view-frame">
+      <section className="view-frame" key={`${view}-${subView}`}>
         {view === "overview" && (
           <>
             <div className="sub-tabs" aria-label="总览子导航">
@@ -161,20 +203,20 @@ function App() {
                 const Icon = tab.icon;
                 return (
                   <button key={tab.id} className={subView === tab.id ? "active" : ""} onClick={() => setSubView(tab.id)} type="button">
-                    <Icon size={16} />
+                    <Icon size={15} strokeWidth={1.8} />
                     <span>{tab.label}</span>
                   </button>
                 );
               })}
             </div>
-            {subView === "overview" && <Overview current={current} first={first} latest={latest} metrics={metrics} />}
-            {subView === "growth" && <Growth metrics={metrics} selected={selected} onSelect={setSelected} />}
+            {subView === "overview" && <Overview current={current} first={first} latest={current} metrics={visibleMetrics} />}
+            {subView === "growth" && <Growth metrics={visibleMetrics} selected={selected} onSelect={setSelected} />}
             {subView === "court" && <CourtView current={current} />}
-            {subView === "load" && <LoadView current={current} metrics={metrics} />}
+            {subView === "load" && <LoadView current={current} metrics={visibleMetrics} />}
           </>
         )}
-        {view === "mint" && <MintView latest={latest} />}
-        {view === "mine" && <MineView />}
+        {view === "mint" && <MintView latest={latest} onBadgeMinted={() => setBadges(readBadges())} />}
+        {view === "mine" && <MineView badges={badges} setBadges={setBadges} />}
       </section>
 
       <nav className="bottom-nav" aria-label="主导航">
@@ -212,7 +254,6 @@ function Overview({ current, first, latest, metrics }: { current: SessionMetric;
       <Card className="summary-card">
         <div className="card-title">
           <span>{current.theme}</span>
-          <strong>{current.status}</strong>
         </div>
         <div className="big-metric">{pct(current.confidence)}</div>
         <p className="muted">自我效能指数。由稳定性、深区控制与训练强度综合估算。</p>
@@ -230,7 +271,11 @@ function Overview({ current, first, latest, metrics }: { current: SessionMetric;
         <Sparkline metrics={metrics} />
         <div className="annotation">
           <strong>{best.label} 是当前突破点</strong>
-          <span>相对首次训练，最近一次失误率从 {pct(first.mistakeRate)} 到 {pct(latest.mistakeRate)}。</span>
+          {metrics.length === 1 ? (
+            <span>首次训练，稳定性为 {pct(first.consistency)}。</span>
+          ) : (
+            <span>相对首次训练，最近一次稳定性从 {pct(first.consistency)} 到 {pct(latest.consistency)}。</span>
+          )}
         </div>
       </Card>
       <Card>
@@ -256,8 +301,8 @@ function Growth({ metrics, selected, onSelect }: { metrics: SessionMetric[]; sel
   const min = Math.min(...points) - 0.02;
   const max = Math.max(...points) + 0.02;
   const coords = metrics.map((metric, index) => {
-    const x = 20 + (index / Math.max(metrics.length - 1, 1)) * 260;
-    const y = 190 - ((1 - metric.mistakeRate - min) / (max - min)) * 150;
+    const x = metrics.length === 1 ? 160 : 20 + (index / (metrics.length - 1)) * 280;
+    const y = metrics.length === 1 ? 115 : 190 - ((1 - metric.mistakeRate - min) / (max - min)) * 150;
     return { x, y, metric, index };
   });
   return (
@@ -301,6 +346,8 @@ function CourtView({ current }: { current: SessionMetric }) {
         <div className="court-wrap">
           <div className="court">
           <div className="court-line net" />
+          <div className="court-line singles-left" />
+          <div className="court-line singles-right" />
           <div className="court-line service-a" />
           <div className="court-line service-b" />
           <div className="court-line center" />
@@ -386,7 +433,7 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
   );
 }
 
-function MintView({ latest }: { latest?: SessionMetric }) {
+function MintView({ latest, onBadgeMinted }: { latest?: SessionMetric; onBadgeMinted: () => void }) {
   const [badge, setBadge] = React.useState<StoredBadge | null>(null);
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -411,11 +458,26 @@ function MintView({ latest }: { latest?: SessionMetric }) {
         avgApex: Number(form.get("avgApex")),
         peakHr: Number(form.get("peakHr")),
       });
-      const stored: StoredBadge = { ...data, id: `${mintedAt}-${mode}`, timestamp: mintedAt };
+      const durationMin = Number(form.get("durationMin"));
+      const totalShots = Number(form.get("totalShots"));
+      const avgSpeed = Number(form.get("avgSpeed"));
+      const avgApex = Number(form.get("avgApex"));
+      const peakHr = Number(form.get("peakHr"));
+      const stored: StoredBadge = {
+        ...data,
+        id: `${mintedAt}-${mode}`,
+        timestamp: mintedAt,
+        durationMin,
+        totalShots,
+        avgSpeed,
+        avgApex,
+        peakHr,
+      };
       setBadge(stored);
       try {
         const existing = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as StoredBadge[];
         localStorage.setItem(badgeStorageKey, JSON.stringify([stored, ...existing].slice(0, 80)));
+        onBadgeMinted();
       } catch { /* ignore */ }
     } catch (err) {
       setError(`${mode === "normal" ? "铸造" : "隐藏款铸造"}失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -476,12 +538,12 @@ function MintView({ latest }: { latest?: SessionMetric }) {
             心率峰值 (bpm)
             <input name="peakHr" type="number" min="60" max="220" step="1" defaultValue={defaults.peakHr} required />
           </label>
-          <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造徽章"}</button>
+          <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造你的徽章"}</button>
           <button className="secondary" type="button" disabled={generating} onClick={() => handleHiddenMint("hidden")}>
-            铸造隐藏款1
+            想要炫彩的？
           </button>
           <button className="secondary black" type="button" disabled={generating} onClick={() => handleHiddenMint("hiddenBlack")}>
-            铸造隐藏款2
+            想要黑白的？
           </button>
         </form>
         {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
@@ -509,32 +571,421 @@ function MintView({ latest }: { latest?: SessionMetric }) {
   );
 }
 
-function MineView() {
-  const [badges] = React.useState<StoredBadge[]>(readBadges);
+type CommunityBadge = {
+  id: string;
+  name: string;
+  imageName: string;
+  creator: string;
+  comment: string;
+  timestamp: number;
+  durationMin: number;
+  totalShots: number;
+  avgSpeed: number;
+  avgApex: number;
+  peakHr: number;
+  isCommunity: true;
+};
+
+const communityBadges: CommunityBadge[] = [
+  {
+    id: "comm-1",
+    name: "Golden Spin Core",
+    imageName: "ball.png",
+    creator: "@TennisAce",
+    comment: "在黄金时段的高强度上旋训练中铸造而成，强烈的旋转让球在空中拉出优美的轨迹！",
+    timestamp: 1780281600000,
+    durationMin: 75,
+    totalShots: 1420,
+    avgSpeed: 72,
+    avgApex: 2.1,
+    peakHr: 168,
+    isCommunity: true,
+  },
+  {
+    id: "comm-2",
+    name: "Supernova Burst",
+    imageName: "burst.png",
+    creator: "@RafaFan",
+    comment: "极限红土正手爆发！速度与旋转的完美交融，球落地后直接弹射起飞。",
+    timestamp: 1779936000000,
+    durationMin: 90,
+    totalShots: 1650,
+    avgSpeed: 84,
+    avgApex: 1.6,
+    peakHr: 182,
+    isCommunity: true,
+  },
+  {
+    id: "comm-3",
+    name: "Cosmic Spark",
+    imageName: "burst-1.png",
+    creator: "@NovakD",
+    comment: "反手直线突击，在底线最深区打出致命一击。这颗火花是给坚持者的勋章。",
+    timestamp: 1780108800000,
+    durationMin: 80,
+    totalShots: 1520,
+    avgSpeed: 78,
+    avgApex: 1.3,
+    peakHr: 175,
+    isCommunity: true,
+  },
+  {
+    id: "comm-4",
+    name: "Claycourt Glide",
+    imageName: "clay.png",
+    creator: "@ClayKing",
+    comment: "在滑步回球的侧身瞬间，捕捉到了属于红土赛季的独特律动。",
+    timestamp: 1779676800000,
+    durationMin: 120,
+    totalShots: 2200,
+    avgSpeed: 68,
+    avgApex: 2.3,
+    peakHr: 160,
+    isCommunity: true,
+  },
+  {
+    id: "comm-5",
+    name: "Dust Particle",
+    imageName: "clay-1.png",
+    creator: "@SlideTennis",
+    comment: "漫天飞扬的红土微尘，伴随着每一次重击，编织成了我们热爱的网球梦。",
+    timestamp: 1779763200000,
+    durationMin: 95,
+    totalShots: 1800,
+    avgSpeed: 70,
+    avgApex: 2.2,
+    peakHr: 165,
+    isCommunity: true,
+  },
+  {
+    id: "comm-6",
+    name: "Championship Ochre",
+    imageName: "clay-2.png",
+    creator: "@RolandG",
+    comment: "象征红土终极荣誉的赭石色，高弧度重上旋球是征服这片场地的关键。",
+    timestamp: 1779849600000,
+    durationMin: 110,
+    totalShots: 1950,
+    avgSpeed: 73,
+    avgApex: 2.5,
+    peakHr: 172,
+    isCommunity: true,
+  },
+  {
+    id: "comm-7",
+    name: "Quantum Matrix",
+    imageName: "core.png",
+    creator: "@VidiCoach",
+    comment: "量子级别的击球控制，将失误率限制在5%以内，这是一场艺术般的精准对决！",
+    timestamp: 1780454400000,
+    durationMin: 60,
+    totalShots: 1100,
+    avgSpeed: 82,
+    avgApex: 1.4,
+    peakHr: 158,
+    isCommunity: true,
+  },
+  {
+    id: "comm-8",
+    name: "Midnight Shadow",
+    imageName: "midnight.png",
+    creator: "@NightOwl",
+    comment: "凌晨时分，球场灯光下的寂静轰鸣。球速极快，犹如深夜里的魅影。",
+    timestamp: 1779072000000,
+    durationMin: 50,
+    totalShots: 980,
+    avgSpeed: 80,
+    avgApex: 1.2,
+    peakHr: 164,
+    isCommunity: true,
+  },
+  {
+    id: "comm-9",
+    name: "Dark Nebula",
+    imageName: "midnight-2.png",
+    creator: "@LunaShot",
+    comment: "深邃的墨绿色球网前，每一次截击都像流星划过夜空般璀璨。",
+    timestamp: 1779158400000,
+    durationMin: 70,
+    totalShots: 1300,
+    avgSpeed: 76,
+    avgApex: 1.5,
+    peakHr: 159,
+    isCommunity: true,
+  },
+  {
+    id: "comm-10",
+    name: "Morning Dew",
+    imageName: "morning.png",
+    creator: "@EarlyBird",
+    comment: "清晨第一缕晨曦，空气中弥漫着清新的露水香气，发球状态出奇地好！",
+    timestamp: 1779417600000,
+    durationMin: 60,
+    totalShots: 1150,
+    avgSpeed: 69,
+    avgApex: 1.7,
+    peakHr: 148,
+    isCommunity: true,
+  },
+  {
+    id: "comm-11",
+    name: "Sunrise Aura",
+    imageName: "morning-2.png",
+    creator: "@DawnPlayer",
+    comment: "朝阳映射在旋转的网球上，拉出金黄色的弧线，充满了崭新一天的活力。",
+    timestamp: 1779504000000,
+    durationMin: 85,
+    totalShots: 1600,
+    avgSpeed: 71,
+    avgApex: 1.9,
+    peakHr: 154,
+    isCommunity: true,
+  },
+  {
+    id: "comm-12",
+    name: "Alpine Apex",
+    imageName: "mount.png",
+    creator: "@HighAlt",
+    comment: "在高原球场进行的极限体能拉锯战，空气稀薄但斗志高昂！",
+    timestamp: 1778812800000,
+    durationMin: 100,
+    totalShots: 1750,
+    avgSpeed: 74,
+    avgApex: 2.0,
+    peakHr: 178,
+    isCommunity: true,
+  },
+  {
+    id: "comm-13",
+    name: "Sonic Wave",
+    imageName: "sonic.png",
+    creator: "@Speedy",
+    comment: "击球声清脆如音爆，发球直接得分（Ace）的瞬间，声波在空气中激荡。",
+    timestamp: 1778467200000,
+    durationMin: 45,
+    totalShots: 850,
+    avgSpeed: 96,
+    avgApex: 1.1,
+    peakHr: 166,
+    isCommunity: true,
+  },
+  {
+    id: "comm-14",
+    name: "Supersonic Flare",
+    imageName: "sonic-1.png",
+    creator: "@FlashServe",
+    comment: "打破个人最快发球时速纪录！完美的抛球与发力让球如闪电般穿透对手防线。",
+    timestamp: 1778553600000,
+    durationMin: 55,
+    totalShots: 920,
+    avgSpeed: 102,
+    avgApex: 1.0,
+    peakHr: 170,
+    isCommunity: true,
+  },
+  {
+    id: "comm-15",
+    name: "Plasma Vector",
+    imageName: "sonic-3.png",
+    creator: "@VoltPlayer",
+    comment: "电光石火间的高速对攻战，球路飘忽不定，将反射神经逼近极限。",
+    timestamp: 1778726400000,
+    durationMin: 75,
+    totalShots: 1380,
+    avgSpeed: 88,
+    avgApex: 1.5,
+    peakHr: 174,
+    isCommunity: true,
+  },
+];
+
+function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: React.Dispatch<React.SetStateAction<StoredBadge[]>> }) {
+  const [mineTab, setMineTab] = React.useState<"collection" | "community">("collection");
+  const [selectedBadge, setSelectedBadge] = React.useState<StoredBadge | CommunityBadge | null>(null);
+  const [toast, setToast] = React.useState<string | null>(null);
+
+  function handleClear() {
+    localStorage.removeItem(badgeStorageKey);
+    setBadges([]);
+  }
+
+  function handleSave() {
+    setToast("保存中...");
+    setTimeout(() => {
+      setToast("已成功保存至相册");
+      setTimeout(() => setToast(null), 2000);
+    }, 600);
+  }
+
+  function handleShare() {
+    setToast("生成分享链接...");
+    setTimeout(() => {
+      setToast("分享链接已复制到剪贴板");
+      setTimeout(() => setToast(null), 2000);
+    }, 600);
+  }
+
+  const isComm = !!(selectedBadge as any)?.isCommunity;
+  const commBadge = isComm ? (selectedBadge as CommunityBadge) : null;
+  const storeBadge = !isComm ? (selectedBadge as StoredBadge) : null;
 
   return (
-    <div className="grid-view">
-      <Card className="wide-card">
-        <div className="card-title">
-          <span>我的徽章</span>
-          <span>{badges.length} 枚</span>
-        </div>
-        {badges.length ? (
-          <div className="badge-grid" aria-label="本地生成徽章">
-            {badges.map((badge) => (
-              <figure key={badge.id} className="badge-tile">
-                <BadgeMark badge={badge} />
-                <figcaption>
-                  <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
-                  <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
+    <div className="mine-view" style={{ padding: "0 4px" }}>
+      <div className="sub-tabs" aria-label="我的子导航" style={{ marginBottom: 20 }}>
+        <button
+          className={mineTab === "collection" ? "active" : ""}
+          onClick={() => setMineTab("collection")}
+          type="button"
+        >
+          <span>我的收藏 ({badges.length})</span>
+        </button>
+        <button
+          className={mineTab === "community" ? "active" : ""}
+          onClick={() => setMineTab("community")}
+          type="button"
+        >
+          <span>社区画廊</span>
+        </button>
+      </div>
+
+      {mineTab === "collection" ? (
+        badges.length ? (
+          <>
+            <div className="badge-grid" aria-label="本地生成徽章">
+              {badges.map((badge) => (
+                <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
+                  <BadgeMark badge={badge} />
+                  <figcaption>
+                    <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
+                    <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+            <div style={{ marginTop: 32, display: "flex", justifyContent: "center" }}>
+              <button className="data-form button secondary" style={{ minHeight: 24, borderRadius: 12, padding: "0 24px", fontSize: 14, fontWeight: "bold" }} onClick={handleClear}>
+                清除历史记录
+              </button>
+            </div>
+          </>
         ) : (
-          <p className="muted">还没有徽章，去铸造一枚吧。</p>
-        )}
-      </Card>
+          <p className="muted" style={{ textAlign: "center", marginTop: 48 }}>还没有徽章，去铸造一枚吧。</p>
+        )
+      ) : (
+        <div className="badge-grid" aria-label="社区徽章画廊">
+          {communityBadges.map((badge) => (
+            <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
+              <div className="badge-community-img-wrap">
+                <img src={new URL(`./Pics/${badge.imageName}`, import.meta.url).href} alt={badge.name} />
+              </div>
+              <figcaption>
+                <strong>{badge.name}</strong>
+                <span>{badge.creator}</span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+
+      {selectedBadge && (
+        <div className="badge-modal-overlay" onClick={() => setSelectedBadge(null)}>
+          <div className="badge-modal-card" onClick={(e) => e.stopPropagation()}>
+            <button className="badge-modal-close" onClick={() => setSelectedBadge(null)} type="button">
+              <X size={16} />
+            </button>
+            <div className="badge-modal-artwork">
+              {commBadge ? (
+                <div className="badge-community-img-wrap-large">
+                  <img src={new URL(`./Pics/${commBadge.imageName}`, import.meta.url).href} alt={commBadge.name} />
+                </div>
+              ) : (
+                storeBadge && <BadgeMark badge={storeBadge} />
+              )}
+            </div>
+            <div className="badge-modal-title">
+              <h3>{commBadge ? commBadge.name : storeBadge && badgeTitle(storeBadge)}</h3>
+              <span>{commBadge ? `由 ${commBadge.creator} 创作的社区创意徽章` : "已铸造为独一无二的数字化训练徽章"}</span>
+            </div>
+            <div className="badge-modal-stats">
+              <div className="badge-modal-stat-item">
+                <label>训练日期</label>
+                <span>{new Date(selectedBadge.timestamp).toLocaleDateString("zh-CN")}</span>
+              </div>
+              <div className="badge-modal-stat-item">
+                <label>训练时间</label>
+                <span>{new Date(selectedBadge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="badge-modal-stat-item">
+                <label>训练时长</label>
+                <span>{selectedBadge.durationMin || 60} 分钟</span>
+              </div>
+              <div className="badge-modal-stat-item">
+                <label>总拍数</label>
+                <span>{selectedBadge.totalShots || 1200} 拍</span>
+              </div>
+              <div className="badge-modal-stat-item">
+                <label>均速</label>
+                <span>{selectedBadge.avgSpeed || 65} km/h</span>
+              </div>
+              <div className="badge-modal-stat-item">
+                <label>均顶点高</label>
+                <span>{selectedBadge.avgApex || 1.8} m</span>
+              </div>
+              <div className="badge-modal-stat-item">
+                <label>峰值心率</label>
+                <span>{selectedBadge.peakHr || 155} bpm</span>
+              </div>
+              {commBadge ? (
+                <div className="badge-modal-stat-item">
+                  <label>来源</label>
+                  <span>社区画廊</span>
+                </div>
+              ) : (
+                storeBadge && (
+                  <div className="badge-modal-stat-item">
+                    <label>线宽 / 变点</label>
+                    <span>{storeBadge.strokeWidth.toFixed(1)} / {storeBadge.variation.toFixed(2)}</span>
+                  </div>
+                )
+              )}
+            </div>
+
+            {commBadge && (
+              <div className="badge-modal-comment">
+                <label>{commBadge.creator}</label>
+                <p>“{commBadge.comment}”</p>
+              </div>
+            )}
+
+            {toast && (
+              <div style={{
+                fontSize: 12,
+                fontWeight: "bold",
+                color: "var(--ink)",
+                background: "rgba(231, 249, 173, 0.4)",
+                padding: "6px 16px",
+                borderRadius: 12,
+                marginTop: 4,
+                textAlign: "center",
+                width: "100%",
+                animation: "fadeIn 0.2s ease both"
+              }}>
+                {toast}
+              </div>
+            )}
+            <div className="badge-modal-actions">
+              <button className="secondary" onClick={handleSave} type="button">
+                <Download size={16} />
+                <span>保存</span>
+              </button>
+              <button className="primary" onClick={handleShare} type="button">
+                <Share2 size={16} />
+                <span>分享</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -548,7 +999,23 @@ function badgeTitle(badge: StoredBadge) {
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <article className={`card ${className}`}>{children}</article>;
+  const ref = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add("visible");
+          observer.unobserve(el);
+        }
+      },
+      { threshold: 0.08, rootMargin: "0px 0px -30px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return <article ref={ref} className={`card ${className}`}>{children}</article>;
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
@@ -561,10 +1028,18 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 }
 
 function Sparkline({ metrics }: { metrics: SessionMetric[] }) {
+  if (metrics.length === 1) {
+    return (
+      <svg className="sparkline" viewBox="0 0 200 100">
+        <path d="M8 84H192 M8 20H192" className="grid-line" />
+        <circle cx={100} cy={50} r={6} fill="var(--ink)" />
+      </svg>
+    );
+  }
   const max = Math.max(...metrics.map((metric) => metric.mistakeRate));
   const min = Math.min(...metrics.map((metric) => metric.mistakeRate));
   const points = metrics.map((metric, index) => {
-    const x = 8 + (index / Math.max(metrics.length - 1, 1)) * 184;
+    const x = 8 + (index / (metrics.length - 1)) * 184;
     const y = 82 - ((max - metric.mistakeRate) / Math.max(max - min, 0.01)) * 64;
     return `${x},${y}`;
   });
@@ -602,7 +1077,7 @@ function RadarChart({ metric }: { metric: SessionMetric }) {
       <polygon points={points.join(" ")} className="radar-shape" />
       {labels.map((label, index) => {
         const angle = -Math.PI / 2 + (index / labels.length) * Math.PI * 2;
-        return <text key={label} x={center + Math.cos(angle) * 76} y={center + Math.sin(angle) * 76 + 4} textAnchor="middle">{label}</text>;
+        return <text key={label} x={center + Math.cos(angle) * 70} y={center + Math.sin(angle) * 70 + 3} textAnchor="middle">{label}</text>;
       })}
     </svg>
   );
@@ -643,7 +1118,7 @@ function TrajectoryStack({ trajectories }: { trajectories: SessionMetric["trajec
             key={`${point.x}-${point.y}-${index}`}
             style={{
               left: `${12 + ((point.x + 5.5) / 11) * 72}%`,
-              bottom: `${14 + point.height_m * 22}%`,
+              bottom: `${14 + point.heightM * 16}%`,
               transform: `translateZ(0) rotate(${index % 2 ? -18 : 18}deg)`,
             }}
             className={trajectory.stroke === "正手" ? "forehand" : ""}

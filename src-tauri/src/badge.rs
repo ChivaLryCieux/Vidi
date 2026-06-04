@@ -185,12 +185,12 @@ pub fn generate_parametric_3d_badge(
     // Palette
     let palette: Vec<(f64, f64, f64)> = match theme {
         "black" => vec![
-            (180.0, 100.0, 50.0), (320.0, 100.0, 60.0), (55.0, 100.0, 55.0),
-            (165.0, 100.0, 45.0), (210.0, 100.0, 55.0), (210.0, 20.0, 10.0),
+            (0.0, 0.0, 20.0), (0.0, 0.0, 45.0), (0.0, 0.0, 65.0),
+            (0.0, 0.0, 80.0), (0.0, 0.0, 92.0), (0.0, 0.0, 12.0),
         ],
         "hidden" => vec![
-            (270.0, 92.0, 75.0), (345.0, 95.0, 76.0), (42.0, 92.0, 65.0),
-            (150.0, 85.0, 72.0), (205.0, 95.0, 72.0), (168.0, 90.0, 65.0),
+            (270.0, 92.0, 80.0), (345.0, 95.0, 80.0), (42.0, 92.0, 76.0),
+            (150.0, 85.0, 78.0), (205.0, 95.0, 78.0), (168.0, 90.0, 76.0),
         ],
         _ => vec![
             (190.0, 100.0, 50.0), (50.0, 100.0, 50.0),  (335.0, 100.0, 68.0),
@@ -277,7 +277,11 @@ pub fn generate_parametric_3d_badge(
     let mut sorted: Vec<SortedPanel> = Vec::new();
 
     // ── HUD watermark grid (ultrathin concentric guide circles) ──
-    let hud_color = (210.0, 10.0, 80.0);
+    let hud_color = if theme == "black" {
+        (0.0, 0.0, 25.0)
+    } else {
+        (210.0, 10.0, 80.0)
+    };
     for ring_i in 0..3 {
         let cr = r_base * (0.92 + ring_i as f64 * 0.06);
         let tilt = ring_i as f64 * 0.28;
@@ -348,14 +352,18 @@ pub fn generate_parametric_3d_badge(
             let nlen = (nx*nx + ny*ny + nz*nz).sqrt().max(1e-6);
             let (nx, ny, nz) = (nx/nlen, ny/nlen, nz/nlen);
 
-            let diffuse = 0.60 + 0.40 * (nx*0.577 + ny*0.577 + nz*0.577).clamp(-1.0, 1.0);
+            let min_diff = if theme == "hidden" { 0.72 } else { 0.20 };
+            let diffuse = (0.60 + 0.40 * (nx*0.577 + ny*0.577 + nz*0.577).clamp(-1.0, 1.0)).max(min_diff);
             let spec_dot = nx * 0.325 + ny * 0.325 + nz * 0.888;
             let specular = spec_dot.max(0.0).powi(14);
 
             // Cometary trail fade along the loop
             let progress = k as f64 / steps as f64;
             let hue = (base_hsl.0 + progress * 24.0).rem_euclid(360.0);
-            let lit = base_hsl.2 - progress * 8.0;
+            let mut lit = base_hsl.2 - progress * 8.0;
+            if theme == "hidden" && lit < 75.0 {
+                lit = 75.0;
+            }
             let fade = 1.0 - progress * 0.55; // opacity fades towards the tail
 
             let color = shade_hsl(hue, base_hsl.1, lit, diffuse, specular);
@@ -377,10 +385,14 @@ pub fn generate_parametric_3d_badge(
         let f = d_cam / (d_cam - rt.2);
         let (cx, cy) = (rt.0 * f, rt.1 * f);
         let ds = 0.04 + shots_fac * 0.03;
+        let mut node_lit = base_hsl.2;
+        if theme == "hidden" && node_lit < 75.0 {
+            node_lit = 75.0;
+        }
         sorted.push(SortedPanel {
             panel: RingPanel {
                 points: [[cx-ds,cy-ds],[cx+ds,cy-ds],[cx+ds,cy+ds],[cx-ds,cy+ds]],
-                color: shade_hsl(base_hsl.0, base_hsl.1, base_hsl.2, 1.4, 0.0),
+                color: shade_hsl(base_hsl.0, base_hsl.1, node_lit, 1.4, 0.0),
                 opacity: 0.96,
                 front: rt.2 >= 0.0,
             },
@@ -396,6 +408,10 @@ pub fn generate_parametric_3d_badge(
         let ecc = if efficiency > 0.8 { 1.0 } else { 1.0 - (0.8 - efficiency) * 0.6 };
         let tilt = yaw + 0.45 * (o as f64 + 1.0) * efficiency;
         let oc = palette[o % palette.len()];
+        let mut orbit_lit = oc.2;
+        if theme == "hidden" && orbit_lit < 75.0 {
+            orbit_lit = 75.0;
+        }
         for k in 0..90 {
             let t0 = k as f64 * (TAU / 90.0);
             let t1 = t0 + TAU / 90.0;
@@ -411,7 +427,7 @@ pub fn generate_parametric_3d_badge(
             sorted.push(SortedPanel {
                 panel: RingPanel {
                     points: [[a[0]-dw,a[1]-dw],[b[0]-dw,b[1]-dw],[b[0]+dw,b[1]+dw],[a[0]+dw,a[1]+dw]],
-                    color: shade_hsl(oc.0, oc.1, oc.2, 1.1, 0.4),
+                    color: shade_hsl(oc.0, oc.1, orbit_lit, 1.1, 0.4),
                     opacity: 0.72 + shots_fac * 0.2,
                     front: z_avg >= 0.0,
                 },
