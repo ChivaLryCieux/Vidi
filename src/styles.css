@@ -1141,6 +1141,63 @@ input:focus-visible {
   animation: slideUp 0.4s var(--ease-out-expo) both;
 }
 
+.badge-candidate-modal {
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.candidate-option {
+  width: 100%;
+  min-height: 194px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.4);
+  border: 2px solid rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+  transform: translateZ(0);
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.candidate-option.active {
+  background: rgba(30, 58, 47, 0.08);
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(30, 58, 47, 0.08);
+}
+
+.candidate-option:focus-visible {
+  outline: 2px solid rgba(30, 58, 47, 0.45);
+  outline-offset: 3px;
+}
+
+.candidate-preview {
+  width: 150px;
+  height: 150px;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+.badge-save-error {
+  width: 100%;
+  margin: -6px 0 2px;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
 @keyframes slideUp {
   from { transform: translateY(30px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
@@ -1327,4 +1384,106 @@ input:focus-visible {
   font-style: italic;
   line-height: 1.5;
   color: #ffffff;
+}
+
+/* ── Badge Grid Layout Tweak ────────────────── */
+.badge-grid-single {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.badge-grid-single .badge-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 16px;
+}
+
+.badge-grid-single .badge-tile .badge-mark {
+  width: min(100%, 180px);
+  height: 180px;
+  justify-self: center;
+}
+
+.badge-grid-single .badge-tile figcaption strong {
+  font-size: 16px;
+  margin-top: 8px;
+}
+
+.badge-grid-single .badge-tile figcaption span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.badge-grid-double {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.badge-grid-double .badge-tile {
+  padding: 14px 10px;
+}
+
+.badge-grid-double .badge-community-img-wrap {
+  width: 92px;
+  height: 92px;
+}
+
+.badge-modal-jump-btn {
+  width: 100%;
+  height: 46px;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  border: 0;
+  cursor: pointer;
+  background: var(--ink);
+  color: #fff;
+  margin-top: 14px;
+  margin-bottom: 2px;
+}
+
+.badge-modal-jump-btn:hover {
+  transform: translateY(-1px);
+}
+
+.badge-modal-jump-btn:active {
+  transform: translateY(0);
+}
+
+.add-data-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px dashed var(--ink);
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--ink);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 68px;
+  margin-left: 4px;
+}
+
+.add-data-btn:hover {
+  background: rgba(30, 58, 47, 0.06);
+}
+
+.add-data-btn span {
+  font-size: 11px;
+  font-weight: bold;
+  margin-top: 2px;
+  display: block;
 }

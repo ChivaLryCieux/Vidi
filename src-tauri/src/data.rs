@@ -123,19 +123,27 @@ pub struct RawSession {
     pub heart_rate: HashMap<String, i64>,
 }
 
-const SESSION_01: &str = include_str!("../../tennis_training_data/session_001_20260411/training_data.json");
-const SESSION_02: &str = include_str!("../../tennis_training_data/session_002_20260422/training_data.json");
-const SESSION_03: &str = include_str!("../../tennis_training_data/session_003_20260508/training_data.json");
-const SESSION_04: &str = include_str!("../../tennis_training_data/session_004_20260514/training_data.json");
-const SESSION_05: &str = include_str!("../../tennis_training_data/session_005_20260526/training_data.json");
-const SESSION_06: &str = include_str!("../../tennis_training_data/session_006_20260604/training_data.json");
-const SESSION_07: &str = include_str!("../../tennis_training_data/session_007_20260618/training_data.json");
-const SESSION_08: &str = include_str!("../../tennis_training_data/session_008_20260627/training_data.json");
+const SESSION_01: &str =
+    include_str!("../../tennis_training_data/session_001_20260411/training_data.json");
+const SESSION_02: &str =
+    include_str!("../../tennis_training_data/session_002_20260422/training_data.json");
+const SESSION_03: &str =
+    include_str!("../../tennis_training_data/session_003_20260508/training_data.json");
+const SESSION_04: &str =
+    include_str!("../../tennis_training_data/session_004_20260514/training_data.json");
+const SESSION_05: &str =
+    include_str!("../../tennis_training_data/session_005_20260526/training_data.json");
+const SESSION_06: &str =
+    include_str!("../../tennis_training_data/session_006_20260604/training_data.json");
+const SESSION_07: &str =
+    include_str!("../../tennis_training_data/session_007_20260618/training_data.json");
+const SESSION_08: &str =
+    include_str!("../../tennis_training_data/session_008_20260627/training_data.json");
 
 pub fn load_all_sessions() -> Vec<RawSession> {
     let raws = [
-        SESSION_01, SESSION_02, SESSION_03, SESSION_04,
-        SESSION_05, SESSION_06, SESSION_07, SESSION_08,
+        SESSION_01, SESSION_02, SESSION_03, SESSION_04, SESSION_05, SESSION_06, SESSION_07,
+        SESSION_08,
     ];
     raws.iter()
         .map(|s| serde_json::from_str(s).expect("failed to parse training data"))

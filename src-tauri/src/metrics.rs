@@ -117,8 +117,14 @@ pub fn build_metric(raw: &RawSession) -> SessionMetric {
         0.0
     };
 
-    let avg_speed = avg(&player_shots.iter().map(|s| s.outgoing_ball.speed_kmh).collect::<Vec<_>>());
-    let avg_spin = avg(&player_shots.iter().map(|s| s.outgoing_ball.spin_rpm).collect::<Vec<_>>());
+    let avg_speed = avg(&player_shots
+        .iter()
+        .map(|s| s.outgoing_ball.speed_kmh)
+        .collect::<Vec<_>>());
+    let avg_spin = avg(&player_shots
+        .iter()
+        .map(|s| s.outgoing_ball.spin_rpm)
+        .collect::<Vec<_>>());
     let max_hr = raw.heart_rate.values().max().copied().unwrap_or(0);
     let avg_hr = avg(&hr_values);
     let consistency = 1.0 - mistake_rate;
@@ -140,7 +146,10 @@ pub fn build_metric(raw: &RawSession) -> SessionMetric {
                 shots: shots.len() as i64,
                 mistakes: failed,
                 rate: failed as f64 / shots.len() as f64,
-                speed: avg(&shots.iter().map(|s| s.outgoing_ball.speed_kmh).collect::<Vec<_>>()),
+                speed: avg(&shots
+                    .iter()
+                    .map(|s| s.outgoing_ball.speed_kmh)
+                    .collect::<Vec<_>>()),
             }
         })
         .collect();
@@ -340,7 +349,10 @@ fn chrono_now() -> String {
     let seconds = secs_in_day % 60;
     // Simple epoch-to-date (UTC, good enough for synthetic data)
     let (y, m, d) = epoch_days_to_ymd(days as i64 + 719468);
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, hours, minutes, seconds)
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        y, m, d, hours, minutes, seconds
+    )
 }
 
 fn epoch_days_to_ymd(mut days: i64) -> (i64, i64, i64) {

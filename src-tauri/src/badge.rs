@@ -2,6 +2,8 @@ use serde::Serialize;
 
 const TAU: f64 = std::f64::consts::PI * 2.0;
 const HALF_PI: f64 = std::f64::consts::FRAC_PI_2;
+const GENERATED_PANEL_BUDGET: usize = 4200;
+const MIN_COMPRESSED_STRAND_RATIO: f64 = 0.45;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -44,8 +46,14 @@ fn sha256(input: &[u8]) -> [u8; 32] {
         0xc67178f2,
     ];
     let mut h = [
-        0x6a09e667u32, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        0x6a09e667u32,
+        0xbb67ae85,
+        0x3c6ef372,
+        0xa54ff53a,
+        0x510e527f,
+        0x9b05688c,
+        0x1f83d9ab,
+        0x5be0cd19,
     ];
     let bit_len = (input.len() as u64) * 8;
     let mut msg = input.to_vec();
@@ -58,24 +66,40 @@ fn sha256(input: &[u8]) -> [u8; 32] {
         let mut w = [0u32; 64];
         for i in 0..16 {
             w[i] = u32::from_be_bytes([
-                chunk[i * 4], chunk[i * 4 + 1], chunk[i * 4 + 2], chunk[i * 4 + 3],
+                chunk[i * 4],
+                chunk[i * 4 + 1],
+                chunk[i * 4 + 2],
+                chunk[i * 4 + 3],
             ]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
             let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
         let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ ((!e) & g);
-            let temp1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let temp1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let temp2 = s0.wrapping_add(maj);
-            hh = g; g = f; f = e; e = d.wrapping_add(temp1);
-            d = c; c = b; b = a; a = temp1.wrapping_add(temp2);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
         }
         for (slot, value) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
             *slot = slot.wrapping_add(value);
@@ -95,10 +119,139 @@ fn digest_unit(digest: &[u8; 32], index: usize) -> f64 {
 
 // ── 3D helpers ──
 
+fn compact_panel_geometry(
+    panels: Vec<SortedPanel>,
+    strand_count: usize,
+    digest: &[u8; 32],
+    limit: usize,
+) -> Vec<RingPanel> {
+    if strand_count == 0 {
+        return panels.into_iter().map(|s| s.panel).collect();
+    }
+
+    let mut strand_counts = vec![0usize; strand_count];
+    let mut always_kept = 0usize;
+    for item in &panels {
+        if let Some(index) = item.strand_index {
+            strand_counts[index] += 1;
+        } else {
+            always_kept += 1;
+        }
+    }
+
+    let keep_ratios: Vec<f64> = (0..strand_count)
+        .map(|index| 0.42 + digest_unit(digest, 24 + index) * 0.16)
+        .collect();
+
+    let mut ranked: Vec<(usize, f64)> = (0..strand_count)
+        .map(|index| {
+            let score = digest_unit(digest, 48 + index) + (strand_counts[index] as f64 * 0.000_001);
+            (index, score)
+        })
+        .collect();
+    ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+    let mut selected = vec![false; strand_count];
+    let min_selected = ((strand_count as f64 * MIN_COMPRESSED_STRAND_RATIO).ceil() as usize)
+        .max(2)
+        .min(strand_count);
+    let jitter_room = strand_count.saturating_sub(min_selected);
+    let jitter = if jitter_room > 0 {
+        ((digest_unit(digest, 72) * (jitter_room as f64 + 1.0)).floor() as usize)
+            .min(jitter_room)
+            .min(strand_count / 4)
+    } else {
+        0
+    };
+
+    for (index, _) in ranked.iter().take(min_selected + jitter) {
+        selected[*index] = true;
+    }
+
+    while estimated_panel_count(always_kept, &strand_counts, &keep_ratios, &selected) > limit {
+        if let Some((index, _)) = ranked.iter().find(|(index, _)| !selected[*index]) {
+            selected[*index] = true;
+        } else {
+            break;
+        }
+    }
+
+    let mut seen = vec![0usize; strand_count];
+    panels
+        .into_iter()
+        .filter_map(|item| {
+            let Some(index) = item.strand_index else {
+                return Some(item.panel);
+            };
+
+            if !selected[index] {
+                return Some(item.panel);
+            }
+
+            let ordinal = seen[index];
+            seen[index] += 1;
+            let keep = strand_counts[index].max(1);
+            let sampled_keep = ((keep as f64) * keep_ratios[index]).ceil().max(1.0) as usize;
+            let step = keep as f64 / sampled_keep as f64;
+            let bucket = (ordinal as f64 / step).floor() as usize;
+            let should_keep = ordinal == ((bucket as f64 * step).floor() as usize);
+
+            if should_keep {
+                Some(quantize_panel(item.panel))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn estimated_panel_count(
+    always_kept: usize,
+    strand_counts: &[usize],
+    keep_ratios: &[f64],
+    selected: &[bool],
+) -> usize {
+    always_kept
+        + strand_counts
+            .iter()
+            .enumerate()
+            .map(|(index, count)| {
+                if selected[index] {
+                    ((*count as f64) * keep_ratios[index]).ceil() as usize
+                } else {
+                    *count
+                }
+            })
+            .sum::<usize>()
+}
+
+fn quantize_panel(mut panel: RingPanel) -> RingPanel {
+    for point in &mut panel.points {
+        point[0] = quantize(point[0], 4);
+        point[1] = quantize(point[1], 4);
+    }
+    panel.opacity = quantize(panel.opacity, 3);
+    panel
+}
+
+fn quantize(value: f64, digits: i32) -> f64 {
+    let factor = 10_f64.powi(digits);
+    (value * factor).round() / factor
+}
+
 fn rotate_3d(x: f64, y: f64, z: f64, yaw: f64, pitch: f64, roll: f64) -> (f64, f64, f64) {
-    let (x1, y1) = (x * roll.cos() - y * roll.sin(), x * roll.sin() + y * roll.cos());
-    let (x2, z2) = (x1 * yaw.cos() - z * yaw.sin(), x1 * yaw.sin() + z * yaw.cos());
-    let (y3, z3) = (y1 * pitch.cos() - z2 * pitch.sin(), y1 * pitch.sin() + z2 * pitch.cos());
+    let (x1, y1) = (
+        x * roll.cos() - y * roll.sin(),
+        x * roll.sin() + y * roll.cos(),
+    );
+    let (x2, z2) = (
+        x1 * yaw.cos() - z * yaw.sin(),
+        x1 * yaw.sin() + z * yaw.cos(),
+    );
+    let (y3, z3) = (
+        y1 * pitch.cos() - z2 * pitch.sin(),
+        y1 * pitch.sin() + z2 * pitch.cos(),
+    );
     (x2, y3, z3)
 }
 
@@ -110,12 +263,18 @@ fn shade_hsl(h: f64, s: f64, l: f64, shade: f64, specular: f64) -> String {
         sl += specular.min(1.0) * 28.0;
         ss -= specular.min(1.0) * 20.0;
     }
-    format!("hsl({:.0}, {:.0}%, {:.0}%)", h, ss.clamp(0.0, 100.0), sl.clamp(5.0, 98.0))
+    format!(
+        "hsl({:.0}, {:.0}%, {:.0}%)",
+        h,
+        ss.clamp(0.0, 100.0),
+        sl.clamp(5.0, 98.0)
+    )
 }
 
 struct SortedPanel {
     panel: RingPanel,
     z_depth: f64,
+    strand_index: Option<usize>,
 }
 
 // ── Parametric S-Curve on a Sphere ──
@@ -130,18 +289,22 @@ struct SortedPanel {
 
 fn seam_point(t: f64, r: f64, a1: f64, a2: f64, psi1: f64, psi2: f64) -> (f64, f64, f64) {
     let phi = HALF_PI + a1 * (2.0 * t + psi1).sin() + a2 * (3.0 * t + psi2).sin();
-    (r * phi.sin() * t.cos(), r * phi.sin() * t.sin(), r * phi.cos())
+    (
+        r * phi.sin() * t.cos(),
+        r * phi.sin() * t.sin(),
+        r * phi.cos(),
+    )
 }
 
 // ── Strand descriptor (compile-time recipe for one ribbon) ──
 
 struct StrandRecipe {
-    r: f64,        // sphere radius
-    a1: f64,       // primary S amplitude
-    a2: f64,       // secondary harmonic amplitude
-    psi1: f64,     // primary phase
-    psi2: f64,     // secondary phase
-    width: f64,    // ribbon width (phi offset)
+    r: f64,     // sphere radius
+    a1: f64,    // primary S amplitude
+    a2: f64,    // secondary harmonic amplitude
+    psi1: f64,  // primary phase
+    psi2: f64,  // secondary phase
+    width: f64, // ribbon width (phi offset)
     color_idx: usize,
     opacity: f64,
     dash_freq: f64, // 0.0 = continuous, >0 = segmented with gaps
@@ -160,41 +323,65 @@ pub fn generate_parametric_3d_badge(
 ) -> BadgeData {
     // SHA-256 of all metrics → every badge is a cryptographic fingerprint
     let digest = sha256(
-        format!("vidi-seam:{}:{}:{}:{}:{}:{}", timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr).as_bytes(),
+        format!(
+            "vidi-seam:{}:{}:{}:{}:{}:{}",
+            timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr
+        )
+        .as_bytes(),
     );
 
     // Camera rotation — tied to session data + hash jitter
     let speed_fac = (avg_speed / 130.0).clamp(0.0, 1.0);
     let hr_fac = (peak_hr / 200.0).clamp(0.0, 1.0);
-    let yaw   = 0.72 + speed_fac * 0.46 + (digest_unit(&digest, 0) - 0.5) * 0.36;
-    let pitch  = 0.48 + hr_fac * 0.28    + (digest_unit(&digest, 1) - 0.5) * 0.26;
-    let roll   = -0.10                    + (digest_unit(&digest, 2) - 0.5) * 0.26;
+    let yaw = 0.72 + speed_fac * 0.46 + (digest_unit(&digest, 0) - 0.5) * 0.36;
+    let pitch = 0.48 + hr_fac * 0.28 + (digest_unit(&digest, 1) - 0.5) * 0.26;
+    let roll = -0.10 + (digest_unit(&digest, 2) - 0.5) * 0.26;
 
     let d_cam = 24.0;
     let r_base = 8.0;
 
     // Complexity scaling from training data
     let shots_fac = (total_shots as f64 / 2000.0).clamp(0.0, 1.0);
-    let apex_fac  = ((avg_apex - 1.0) / 2.0).clamp(0.0, 1.0);
-    let dur_fac   = (duration_min / 120.0).clamp(0.0, 1.0);
-    let base_amp  = 0.36 + apex_fac * 0.22;  // primary S swing
+    let apex_fac = ((avg_apex - 1.0) / 2.0).clamp(0.0, 1.0);
+    let dur_fac = (duration_min / 120.0).clamp(0.0, 1.0);
+    let base_amp = 0.36 + apex_fac * 0.22; // primary S swing
 
-    let op_base = match theme { "hidden" => 0.50, "black" => 0.62, _ => 0.80 };
-    let op_thin = match theme { "hidden" => 0.60, "black" => 0.74, _ => 0.92 };
+    let op_base = match theme {
+        "hidden" => 0.50,
+        "black" => 0.62,
+        _ => 0.80,
+    };
+    let op_thin = match theme {
+        "hidden" => 0.60,
+        "black" => 0.74,
+        _ => 0.92,
+    };
 
     // Palette
     let palette: Vec<(f64, f64, f64)> = match theme {
         "black" => vec![
-            (0.0, 0.0, 20.0), (0.0, 0.0, 45.0), (0.0, 0.0, 65.0),
-            (0.0, 0.0, 80.0), (0.0, 0.0, 92.0), (0.0, 0.0, 12.0),
+            (0.0, 0.0, 20.0),
+            (0.0, 0.0, 45.0),
+            (0.0, 0.0, 65.0),
+            (0.0, 0.0, 80.0),
+            (0.0, 0.0, 92.0),
+            (0.0, 0.0, 12.0),
         ],
         "hidden" => vec![
-            (270.0, 92.0, 80.0), (345.0, 95.0, 80.0), (42.0, 92.0, 76.0),
-            (150.0, 85.0, 78.0), (205.0, 95.0, 78.0), (168.0, 90.0, 76.0),
+            (270.0, 92.0, 80.0),
+            (345.0, 95.0, 80.0),
+            (42.0, 92.0, 76.0),
+            (150.0, 85.0, 78.0),
+            (205.0, 95.0, 78.0),
+            (168.0, 90.0, 76.0),
         ],
         _ => vec![
-            (190.0, 100.0, 50.0), (50.0, 100.0, 50.0),  (335.0, 100.0, 68.0),
-            (165.0, 100.0, 45.0), (210.0, 100.0, 55.0),  (210.0, 30.0, 12.0),
+            (190.0, 100.0, 50.0),
+            (50.0, 100.0, 50.0),
+            (335.0, 100.0, 68.0),
+            (165.0, 100.0, 45.0),
+            (210.0, 100.0, 55.0),
+            (210.0, 30.0, 12.0),
         ],
     };
 
@@ -288,29 +475,46 @@ pub fn generate_parametric_3d_badge(
         for k in 0..72 {
             let t0 = k as f64 * (TAU / 72.0);
             let t1 = t0 + TAU / 72.0;
-            let v0 = (cr * t0.cos(), cr * t0.sin() * tilt.cos(), cr * t0.sin() * tilt.sin());
-            let v1 = (cr * t1.cos(), cr * t1.sin() * tilt.cos(), cr * t1.sin() * tilt.sin());
+            let v0 = (
+                cr * t0.cos(),
+                cr * t0.sin() * tilt.cos(),
+                cr * t0.sin() * tilt.sin(),
+            );
+            let v1 = (
+                cr * t1.cos(),
+                cr * t1.sin() * tilt.cos(),
+                cr * t1.sin() * tilt.sin(),
+            );
             let rv0 = rotate_3d(v0.0, v0.1, v0.2, yaw, pitch, roll);
             let rv1 = rotate_3d(v1.0, v1.1, v1.2, yaw, pitch, roll);
             let z_avg = (rv0.2 + rv1.2) * 0.5;
-            let proj = |p: (f64, f64, f64)| { let f = d_cam / (d_cam - p.2); [p.0 * f, p.1 * f] };
+            let proj = |p: (f64, f64, f64)| {
+                let f = d_cam / (d_cam - p.2);
+                [p.0 * f, p.1 * f]
+            };
             let a = proj(rv0);
             let b = proj(rv1);
             let dw = 0.006;
             sorted.push(SortedPanel {
                 panel: RingPanel {
-                    points: [[a[0]-dw,a[1]-dw],[b[0]-dw,b[1]-dw],[b[0]+dw,b[1]+dw],[a[0]+dw,a[1]+dw]],
+                    points: [
+                        [a[0] - dw, a[1] - dw],
+                        [b[0] - dw, b[1] - dw],
+                        [b[0] + dw, b[1] + dw],
+                        [a[0] + dw, a[1] + dw],
+                    ],
                     color: shade_hsl(hud_color.0, hud_color.1, hud_color.2, 1.0, 0.0),
                     opacity: 0.18,
                     front: z_avg >= 0.0,
                 },
                 z_depth: z_avg - 0.3,
+                strand_index: None,
             });
         }
     }
 
     // ── Generate ribbon panels for every strand recipe ──
-    for (_si, recipe) in recipes.iter().enumerate() {
+    for (si, recipe) in recipes.iter().enumerate() {
         let base_hsl = palette[recipe.color_idx];
 
         for k in 0..steps {
@@ -325,11 +529,21 @@ pub fn generate_parametric_3d_badge(
             let half_w = recipe.width * 0.5;
 
             // Quad corners: offset the phi angle ±half_w from the seam center line
-            let phi0_center = HALF_PI + recipe.a1 * (2.0 * t0 + recipe.psi1).sin() + recipe.a2 * (3.0 * t0 + recipe.psi2).sin();
-            let phi1_center = HALF_PI + recipe.a1 * (2.0 * t1 + recipe.psi1).sin() + recipe.a2 * (3.0 * t1 + recipe.psi2).sin();
+            let phi0_center = HALF_PI
+                + recipe.a1 * (2.0 * t0 + recipe.psi1).sin()
+                + recipe.a2 * (3.0 * t0 + recipe.psi2).sin();
+            let phi1_center = HALF_PI
+                + recipe.a1 * (2.0 * t1 + recipe.psi1).sin()
+                + recipe.a2 * (3.0 * t1 + recipe.psi2).sin();
 
             let r = recipe.r;
-            let make_pt = |t: f64, phi: f64| (r * phi.sin() * t.cos(), r * phi.sin() * t.sin(), r * phi.cos());
+            let make_pt = |t: f64, phi: f64| {
+                (
+                    r * phi.sin() * t.cos(),
+                    r * phi.sin() * t.sin(),
+                    r * phi.cos(),
+                )
+            };
 
             let v0 = make_pt(t0, phi0_center - half_w);
             let v1 = make_pt(t1, phi1_center - half_w);
@@ -343,17 +557,25 @@ pub fn generate_parametric_3d_badge(
 
             let z_avg = (rv0.2 + rv1.2 + rv2.2 + rv3.2) * 0.25;
 
-            let proj = |p: (f64, f64, f64)| { let f = d_cam / (d_cam - p.2); [p.0 * f, p.1 * f] };
+            let proj = |p: (f64, f64, f64)| {
+                let f = d_cam / (d_cam - p.2);
+                [p.0 * f, p.1 * f]
+            };
 
             // Diffuse normal
             let (dx1, dy1, dz1) = (rv1.0 - rv0.0, rv1.1 - rv0.1, rv1.2 - rv0.2);
             let (dx2, dy2, dz2) = (rv3.0 - rv0.0, rv3.1 - rv0.1, rv3.2 - rv0.2);
-            let (nx, ny, nz) = (dy1*dz2 - dz1*dy2, dz1*dx2 - dx1*dz2, dx1*dy2 - dy1*dx2);
-            let nlen = (nx*nx + ny*ny + nz*nz).sqrt().max(1e-6);
-            let (nx, ny, nz) = (nx/nlen, ny/nlen, nz/nlen);
+            let (nx, ny, nz) = (
+                dy1 * dz2 - dz1 * dy2,
+                dz1 * dx2 - dx1 * dz2,
+                dx1 * dy2 - dy1 * dx2,
+            );
+            let nlen = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-6);
+            let (nx, ny, nz) = (nx / nlen, ny / nlen, nz / nlen);
 
             let min_diff = if theme == "hidden" { 0.72 } else { 0.20 };
-            let diffuse = (0.60 + 0.40 * (nx*0.577 + ny*0.577 + nz*0.577).clamp(-1.0, 1.0)).max(min_diff);
+            let diffuse = (0.60 + 0.40 * (nx * 0.577 + ny * 0.577 + nz * 0.577).clamp(-1.0, 1.0))
+                .max(min_diff);
             let spec_dot = nx * 0.325 + ny * 0.325 + nz * 0.888;
             let specular = spec_dot.max(0.0).powi(14);
 
@@ -376,11 +598,19 @@ pub fn generate_parametric_3d_badge(
                     front: z_avg >= 0.0,
                 },
                 z_depth: z_avg,
+                strand_index: Some(si),
             });
         }
 
         // Node sparkle at the "tip" (halfway around the loop for visual balance)
-        let tip = seam_point(std::f64::consts::PI, recipe.r, recipe.a1, recipe.a2, recipe.psi1, recipe.psi2);
+        let tip = seam_point(
+            std::f64::consts::PI,
+            recipe.r,
+            recipe.a1,
+            recipe.a2,
+            recipe.psi1,
+            recipe.psi2,
+        );
         let rt = rotate_3d(tip.0, tip.1, tip.2, yaw, pitch, roll);
         let f = d_cam / (d_cam - rt.2);
         let (cx, cy) = (rt.0 * f, rt.1 * f);
@@ -391,12 +621,18 @@ pub fn generate_parametric_3d_badge(
         }
         sorted.push(SortedPanel {
             panel: RingPanel {
-                points: [[cx-ds,cy-ds],[cx+ds,cy-ds],[cx+ds,cy+ds],[cx-ds,cy+ds]],
+                points: [
+                    [cx - ds, cy - ds],
+                    [cx + ds, cy - ds],
+                    [cx + ds, cy + ds],
+                    [cx - ds, cy + ds],
+                ],
                 color: shade_hsl(base_hsl.0, base_hsl.1, node_lit, 1.4, 0.0),
                 opacity: 0.96,
                 front: rt.2 >= 0.0,
             },
             z_depth: rt.2 + 0.1,
+            strand_index: None,
         });
     }
 
@@ -405,7 +641,11 @@ pub fn generate_parametric_3d_badge(
     let n_orbits = if total_shots > 1200 { 2 } else { 1 };
     for o in 0..n_orbits {
         let or = r_base * (1.12 + o as f64 * 0.08);
-        let ecc = if efficiency > 0.8 { 1.0 } else { 1.0 - (0.8 - efficiency) * 0.6 };
+        let ecc = if efficiency > 0.8 {
+            1.0
+        } else {
+            1.0 - (0.8 - efficiency) * 0.6
+        };
         let tilt = yaw + 0.45 * (o as f64 + 1.0) * efficiency;
         let oc = palette[o % palette.len()];
         let mut orbit_lit = oc.2;
@@ -415,58 +655,77 @@ pub fn generate_parametric_3d_badge(
         for k in 0..90 {
             let t0 = k as f64 * (TAU / 90.0);
             let t1 = t0 + TAU / 90.0;
-            let v0 = (or*t0.cos(), or*t0.sin()*ecc*tilt.cos(), or*t0.sin()*ecc*tilt.sin());
-            let v1 = (or*t1.cos(), or*t1.sin()*ecc*tilt.cos(), or*t1.sin()*ecc*tilt.sin());
+            let v0 = (
+                or * t0.cos(),
+                or * t0.sin() * ecc * tilt.cos(),
+                or * t0.sin() * ecc * tilt.sin(),
+            );
+            let v1 = (
+                or * t1.cos(),
+                or * t1.sin() * ecc * tilt.cos(),
+                or * t1.sin() * ecc * tilt.sin(),
+            );
             let rv0 = rotate_3d(v0.0, v0.1, v0.2, yaw, pitch, roll);
             let rv1 = rotate_3d(v1.0, v1.1, v1.2, yaw, pitch, roll);
             let z_avg = (rv0.2 + rv1.2) * 0.5;
-            let proj = |p: (f64, f64, f64)| { let f = d_cam / (d_cam - p.2); [p.0 * f, p.1 * f] };
+            let proj = |p: (f64, f64, f64)| {
+                let f = d_cam / (d_cam - p.2);
+                [p.0 * f, p.1 * f]
+            };
             let a = proj(rv0);
             let b = proj(rv1);
             let dw = 0.018 + shots_fac * 0.016;
             sorted.push(SortedPanel {
                 panel: RingPanel {
-                    points: [[a[0]-dw,a[1]-dw],[b[0]-dw,b[1]-dw],[b[0]+dw,b[1]+dw],[a[0]+dw,a[1]+dw]],
+                    points: [
+                        [a[0] - dw, a[1] - dw],
+                        [b[0] - dw, b[1] - dw],
+                        [b[0] + dw, b[1] + dw],
+                        [a[0] + dw, a[1] + dw],
+                    ],
                     color: shade_hsl(oc.0, oc.1, orbit_lit, 1.1, 0.4),
                     opacity: 0.72 + shots_fac * 0.2,
                     front: z_avg >= 0.0,
                 },
                 z_depth: z_avg + 0.15,
+                strand_index: None,
             });
         }
     }
 
     // ── Painter's depth sort (back → front) ──
     sorted.sort_by(|a, b| a.z_depth.partial_cmp(&b.z_depth).unwrap());
-    let panels: Vec<RingPanel> = sorted.into_iter().map(|s| s.panel).collect();
 
     // ── Normalize to [0,1] coordinate space ──
-    let mut panels = panels;
-    if !panels.is_empty() {
+    if !sorted.is_empty() {
         let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
         let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
-        for p in &panels {
-            for pt in p.points {
-                min_x = min_x.min(pt[0]); max_x = max_x.max(pt[0]);
-                min_y = min_y.min(pt[1]); max_y = max_y.max(pt[1]);
+        for item in &sorted {
+            for pt in item.panel.points {
+                min_x = min_x.min(pt[0]);
+                max_x = max_x.max(pt[0]);
+                min_y = min_y.min(pt[1]);
+                max_y = max_y.max(pt[1]);
             }
         }
         let cx = (min_x + max_x) * 0.5;
         let cy = (min_y + max_y) * 0.5;
         let mut max_r = 1e-6_f64;
-        for p in &panels {
-            for pt in p.points {
+        for item in &sorted {
+            for pt in item.panel.points {
                 max_r = max_r.max(((pt[0] - cx).powi(2) + (pt[1] - cy).powi(2)).sqrt());
             }
         }
         let scale = 0.42 / max_r;
-        for p in &mut panels {
-            for pt in &mut p.points {
+        for item in &mut sorted {
+            for pt in &mut item.panel.points {
                 pt[0] = (pt[0] - cx) * scale + 0.5;
                 pt[1] = (pt[1] - cy) * scale + 0.5;
             }
         }
     }
+
+    let panels = compact_panel_geometry(sorted, recipes.len(), &digest, GENERATED_PANEL_BUDGET);
 
     let c0 = palette[0];
     let c2 = palette[2];
@@ -476,7 +735,7 @@ pub fn generate_parametric_3d_badge(
         zorder_points: vec![],
         ring_panels: panels,
         color_start: format!("hsl({:.0}, {:.0}%, {:.0}%)", c0.0, c0.1, c0.2),
-        color_end:   format!("hsl({:.0}, {:.0}%, {:.0}%)", c2.0, c2.1, c2.2),
+        color_end: format!("hsl({:.0}, {:.0}%, {:.0}%)", c2.0, c2.1, c2.2),
         color_inverted: "rgb(255,255,255)".into(),
         inverted_pos: hr_fac,
         stroke_width: 1.0 + shots_fac * 2.0,
@@ -487,14 +746,59 @@ pub fn generate_parametric_3d_badge(
 
 // ── Public entry points (called by commands.rs) ──
 
-pub fn generate_badge(timestamp: i64, duration_min: f64, total_shots: i64, avg_speed: f64, avg_apex: f64, peak_hr: f64) -> BadgeData {
-    generate_parametric_3d_badge(timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr, "standard")
+pub fn generate_badge(
+    timestamp: i64,
+    duration_min: f64,
+    total_shots: i64,
+    avg_speed: f64,
+    avg_apex: f64,
+    peak_hr: f64,
+) -> BadgeData {
+    generate_parametric_3d_badge(
+        timestamp,
+        duration_min,
+        total_shots,
+        avg_speed,
+        avg_apex,
+        peak_hr,
+        "standard",
+    )
 }
 
-pub fn generate_hidden_badge(timestamp: i64, duration_min: f64, total_shots: i64, avg_speed: f64, avg_apex: f64, peak_hr: f64) -> BadgeData {
-    generate_parametric_3d_badge(timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr, "hidden")
+pub fn generate_hidden_badge(
+    timestamp: i64,
+    duration_min: f64,
+    total_shots: i64,
+    avg_speed: f64,
+    avg_apex: f64,
+    peak_hr: f64,
+) -> BadgeData {
+    generate_parametric_3d_badge(
+        timestamp,
+        duration_min,
+        total_shots,
+        avg_speed,
+        avg_apex,
+        peak_hr,
+        "hidden",
+    )
 }
 
-pub fn generate_hidden_black_badge(timestamp: i64, duration_min: f64, total_shots: i64, avg_speed: f64, avg_apex: f64, peak_hr: f64) -> BadgeData {
-    generate_parametric_3d_badge(timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr, "black")
+pub fn generate_hidden_black_badge(
+    timestamp: i64,
+    duration_min: f64,
+    total_shots: i64,
+    avg_speed: f64,
+    avg_apex: f64,
+    peak_hr: f64,
+) -> BadgeData {
+    generate_parametric_3d_badge(
+        timestamp,
+        duration_min,
+        total_shots,
+        avg_speed,
+        avg_apex,
+        peak_hr,
+        "black",
+    )
 }

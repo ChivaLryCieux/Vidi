@@ -86,9 +86,12 @@ type StoredBadge = BadgeData & {
   avgSpeed?: number;
   avgApex?: number;
   peakHr?: number;
+  sessionId?: string;
 };
 
 const badgeStorageKey = "vidi.badges";
+const badgeStorageSoftLimit = 100;
+const badgeStorageMinimum = 20;
 type MintMode = "normal" | "hidden" | "hiddenBlack";
 
 function pct(value: number) {
@@ -100,9 +103,9 @@ function cnDate(value: string) {
 }
 
 const navItems = [
-  { id: "overview", label: "总览", icon: Grid2X2 },
-  { id: "mint", label: "铸造", icon: Sparkles },
   { id: "mine", label: "我的", icon: CircleUserRound },
+  { id: "mint", label: "铸造", icon: Sparkles },
+  { id: "overview", label: "总览", icon: Grid2X2 },
 ] as const;
 
 type ViewId = (typeof navItems)[number]["id"];
@@ -117,7 +120,7 @@ const overviewSubTabs = [
 type OverviewSubView = (typeof overviewSubTabs)[number]["id"];
 
 function App() {
-  const [view, setView] = React.useState<ViewId>("overview");
+  const [view, setView] = React.useState<ViewId>("mine");
   const [subView, setSubView] = React.useState<OverviewSubView>("overview");
   const [baseMetrics, setBaseMetrics] = React.useState<SessionMetric[]>([]);
   const [selected, setSelected] = React.useState(0);
@@ -150,6 +153,87 @@ function App() {
   const improvement = first && current ? (first.mistakeRate - current.mistakeRate) / first.mistakeRate : 0;
   const visibleMetrics = metrics.slice(0, selected + 1);
 
+  const [showAddDataModal, setShowAddDataModal] = React.useState(false);
+
+  const shotsList = metrics.map((m) => m.shots);
+  const minShots = shotsList.length ? Math.round(Math.min(...shotsList) * 0.7) : 400;
+  const maxShots = shotsList.length ? Math.round(Math.max(...shotsList) * 1.3) : 2500;
+
+  const speedList = metrics.map((m) => m.avgSpeed);
+  const minSpeed = speedList.length ? Math.round(Math.min(...speedList) * 0.7) : 40;
+  const maxSpeed = speedList.length ? Math.round(Math.max(...speedList) * 1.3) : 150;
+
+  const hrList = metrics.map((m) => m.maxHr);
+  const minHr = hrList.length ? Math.round(Math.min(...hrList) * 0.8) : 100;
+  const maxHrVal = hrList.length ? Math.min(220, Math.round(Math.max(...hrList) * 1.2)) : 210;
+
+  async function handleAddDataSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const dateInput = form.get("date") as string;
+    const themeInput = form.get("theme") as string;
+    const shotsInput = Number(form.get("shots"));
+    const mistakesInput = Number(form.get("mistakes"));
+    const deepRateInput = Number(form.get("deepRate"));
+    const avgSpeedInput = Number(form.get("avgSpeed"));
+    const maxHrInput = Number(form.get("maxHr"));
+
+    if (mistakesInput > shotsInput) {
+      alert("失误数不能大于总击球数！");
+      return;
+    }
+
+    const mistakeRateInput = mistakesInput / shotsInput;
+
+    try {
+      const newSession = await invoke<SessionMetric>("add_manual_session", {
+        theme: themeInput,
+        mistakeRate: mistakeRateInput,
+        deepRate: deepRateInput,
+        avgSpeed: avgSpeedInput,
+        maxHr: maxHrInput,
+      });
+
+      newSession.date = new Date(dateInput).toISOString().slice(0, 10);
+      newSession.shots = shotsInput;
+      newSession.playerShots = Math.round(shotsInput * 0.5);
+      newSession.mistakes = mistakesInput;
+      newSession.mistakeRate = mistakeRateInput;
+      newSession.deepRate = deepRateInput;
+      newSession.avgSpeed = avgSpeedInput;
+      newSession.maxHr = maxHrInput;
+      newSession.avgHr = Math.round(maxHrInput - 18);
+      newSession.consistency = 1.0 - mistakeRateInput;
+      newSession.confidence = Math.min(0.96, 0.48 + newSession.consistency * 0.32 + deepRateInput * 0.18);
+
+      const tempMetrics = [...baseMetrics, newSession].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const newIndex = tempMetrics.findIndex((m) => m.id === newSession.id);
+      
+      let status = "巩固期";
+      if (newIndex > 0) {
+        const prev = tempMetrics[newIndex - 1];
+        if (newSession.mistakeRate < prev.mistakeRate) {
+          status = "突破期";
+        }
+      }
+      newSession.status = status;
+
+      const updatedList = tempMetrics.map((m, idx) => ({
+        ...m,
+        index: idx,
+        label: `S${idx + 1}`
+      }));
+
+      setBaseMetrics(updatedList);
+      setShowAddDataModal(false);
+
+      const finalIdx = updatedList.findIndex((m) => m.id === newSession.id);
+      setSelected(finalIdx);
+    } catch (err) {
+      alert(`录入失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   if (!metrics.length) {
     return (
       <main className="app-shell">
@@ -181,7 +265,12 @@ function App() {
           <header className="page-header">
             <h1>你的进步：  {pct(improvement)}</h1>
           </header>
-          <SessionRail metrics={metrics} selected={selected} onSelect={setSelected} />
+          <SessionRail
+            metrics={metrics}
+            selected={selected}
+            onSelect={setSelected}
+            onAddDataClick={() => setShowAddDataModal(true)}
+          />
         </>
       )}
       {view === "mint" && (
@@ -215,8 +304,25 @@ function App() {
             {subView === "load" && <LoadView current={current} metrics={visibleMetrics} />}
           </>
         )}
-        {view === "mint" && <MintView latest={latest} onBadgeMinted={() => setBadges(readBadges())} />}
-        {view === "mine" && <MineView badges={badges} setBadges={setBadges} />}
+        {view === "mint" && (
+          <MintView
+            metrics={metrics}
+            onBadgeMinted={() => {
+              setBadges(readBadges());
+              setView("mine");
+            }}
+          />
+        )}
+        {view === "mine" && (
+          <MineView
+            badges={badges}
+            setBadges={setBadges}
+            setView={setView}
+            setSubView={setSubView}
+            setSelected={setSelected}
+            metrics={metrics}
+          />
+        )}
       </section>
 
       <nav className="bottom-nav" aria-label="主导航">
@@ -230,11 +336,91 @@ function App() {
           );
         })}
       </nav>
+
+      {showAddDataModal && (
+        <div className="badge-modal-overlay" onClick={() => setShowAddDataModal(false)}>
+          <div className="badge-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxHeight: "85vh", overflowY: "auto" }}>
+            <button className="badge-modal-close" onClick={() => setShowAddDataModal(false)} type="button">
+              <X size={16} />
+            </button>
+            <div className="badge-modal-title" style={{ marginBottom: 16 }}>
+              <h3>录入新训练数据</h3>
+              <span>系统将根据现有历史自动分析该场表现</span>
+            </div>
+            
+            <form className="data-form" onSubmit={handleAddDataSubmit}>
+              <label>
+                训练日期
+                <input name="date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required />
+              </label>
+              
+              <label>
+                训练主题
+                <input name="theme" type="text" placeholder="例如：正手稳定性专项" defaultValue="主攻正手训练" required />
+              </label>
+
+              <label>
+                总击球数 (范围: {minShots} - {maxShots})
+                <input name="shots" type="number" min={minShots} max={maxShots} defaultValue={1200} required />
+              </label>
+
+              <label>
+                失误球数 (范围: 0 - {Math.round(maxShots * 0.4)})
+                <input name="mistakes" type="number" min={0} max={Math.round(maxShots * 0.4)} defaultValue={120} required />
+              </label>
+
+              <label>
+                落点深区率 (范围: 0.1 - 0.9)
+                <input name="deepRate" type="number" min={0.1} max={0.9} step={0.01} defaultValue={0.4} required />
+              </label>
+
+              <label>
+                击球均速 (km/h, 范围: {minSpeed} - {maxSpeed})
+                <input name="avgSpeed" type="number" min={minSpeed} max={maxSpeed} defaultValue={70} required />
+              </label>
+
+              <label>
+                峰值心率 (bpm, 范围: {minHr} - {maxHrVal})
+                <input name="maxHr" type="number" min={minHr} max={maxHrVal} defaultValue={160} required />
+              </label>
+
+              <button
+                className="button primary"
+                type="submit"
+                style={{
+                  width: "100%",
+                  minHeight: 46,
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: "bold",
+                  background: "var(--ink)",
+                  color: "#ffffff",
+                  border: "none",
+                  marginTop: 16,
+                  cursor: "pointer"
+                }}
+              >
+                开始分析并录入
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-function SessionRail({ metrics, selected, onSelect }: { metrics: SessionMetric[]; selected: number; onSelect: (value: number) => void }) {
+function SessionRail({
+  metrics,
+  selected,
+  onSelect,
+  onAddDataClick,
+}: {
+  metrics: SessionMetric[];
+  selected: number;
+  onSelect: (value: number) => void;
+  onAddDataClick: () => void;
+}) {
   return (
     <div className="session-rail" aria-label="训练场次">
       {metrics.map((metric, index) => (
@@ -243,6 +429,10 @@ function SessionRail({ metrics, selected, onSelect }: { metrics: SessionMetric[]
           <small>{cnDate(metric.date)}</small>
         </button>
       ))}
+      <button className="add-data-btn" onClick={onAddDataClick} type="button">
+        <Plus size={16} />
+        <span>录入数据</span>
+      </button>
     </div>
   );
 }
@@ -433,87 +623,133 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
   );
 }
 
-function MintView({ latest, onBadgeMinted }: { latest?: SessionMetric; onBadgeMinted: () => void }) {
-  const [badge, setBadge] = React.useState<StoredBadge | null>(null);
+function MintView({
+  metrics,
+  onBadgeMinted,
+}: {
+  metrics: SessionMetric[];
+  onBadgeMinted: () => void;
+}) {
+  const [selectedIdx, setSelectedIdx] = React.useState(metrics.length - 1);
+  const [candidates, setCandidates] = React.useState<StoredBadge[]>([]);
+  const [selectedCandidateIdx, setSelectedCandidateIdx] = React.useState<number>(0);
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const formRef = React.useRef<HTMLFormElement>(null);
 
-  async function mintFromForm(formElement: HTMLFormElement, mode: MintMode) {
-    const form = new FormData(formElement);
+  const currentSession = metrics[selectedIdx] || metrics[metrics.length - 1];
+
+  const defaults = currentSession ? {
+    timestamp: new Date(currentSession.date).toISOString().slice(0, 16),
+    durationMin: 60,
+    totalShots: currentSession.shots,
+    avgSpeed: Math.round(currentSession.avgSpeed),
+    avgApex: 1.8,
+    peakHr: currentSession.maxHr,
+  } : { timestamp: "", durationMin: 60, totalShots: 1200, avgSpeed: 65, avgApex: 1.8, peakHr: 155 };
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
     setGenerating(true);
     setError(null);
+    setSaveError(null);
     try {
       const mintedAt = Date.now();
-      const command = mode === "hiddenBlack"
-        ? "gen_hidden_black_badge"
-        : mode === "hidden"
-          ? "gen_hidden_badge"
-          : "gen_badge";
-      const data = await invoke<BadgeData>(command, {
-        timestamp: mintedAt,
-        durationMin: Number(form.get("durationMin")),
-        totalShots: Number(form.get("totalShots")),
-        avgSpeed: Number(form.get("avgSpeed")),
-        avgApex: Number(form.get("avgApex")),
-        peakHr: Number(form.get("peakHr")),
-      });
       const durationMin = Number(form.get("durationMin"));
       const totalShots = Number(form.get("totalShots"));
       const avgSpeed = Number(form.get("avgSpeed"));
       const avgApex = Number(form.get("avgApex"));
       const peakHr = Number(form.get("peakHr"));
-      const stored: StoredBadge = {
-        ...data,
-        id: `${mintedAt}-${mode}`,
-        timestamp: mintedAt,
-        durationMin,
-        totalShots,
-        avgSpeed,
-        avgApex,
-        peakHr,
-      };
-      setBadge(stored);
-      try {
-        const existing = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as StoredBadge[];
-        localStorage.setItem(badgeStorageKey, JSON.stringify([stored, ...existing].slice(0, 80)));
-        onBadgeMinted();
-      } catch { /* ignore */ }
+      const formTimestamp = form.get("timestamp") as string;
+      const trainingTime = formTimestamp ? new Date(formTimestamp).getTime() : mintedAt;
+
+      const [normalData, hiddenData, hiddenBlackData] = await Promise.all([
+        invoke<BadgeData>("gen_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr }),
+        invoke<BadgeData>("gen_hidden_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr }),
+        invoke<BadgeData>("gen_hidden_black_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr })
+      ]);
+
+      const items: StoredBadge[] = [
+        {
+          ...normalData,
+          id: `${mintedAt}-normal`,
+          timestamp: trainingTime,
+          durationMin,
+          totalShots,
+          avgSpeed,
+          avgApex,
+          peakHr,
+          sessionId: currentSession.id
+        },
+        {
+          ...hiddenData,
+          id: `${mintedAt}-hidden`,
+          timestamp: trainingTime,
+          durationMin,
+          totalShots,
+          avgSpeed,
+          avgApex,
+          peakHr,
+          sessionId: currentSession.id
+        },
+        {
+          ...hiddenBlackData,
+          id: `${mintedAt}-hiddenBlack`,
+          timestamp: trainingTime,
+          durationMin,
+          totalShots,
+          avgSpeed,
+          avgApex,
+          peakHr,
+          sessionId: currentSession.id
+        }
+      ];
+
+      setCandidates(items);
+      setSelectedCandidateIdx(0);
     } catch (err) {
-      setError(`${mode === "normal" ? "铸造" : "隐藏款铸造"}失败: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`铸造失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setGenerating(false);
     }
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    await mintFromForm(e.currentTarget, "normal");
+  function handleSaveSelected() {
+    const selectedBadge = candidates[selectedCandidateIdx];
+    if (!selectedBadge) return;
+    try {
+      saveBadgeToGallery(selectedBadge);
+      onBadgeMinted();
+      setCandidates([]);
+    } catch (err) {
+      setSaveError(`保存失败：${err instanceof Error ? err.message : String(err)}`);
+    }
   }
-
-  async function handleHiddenMint(mode: Exclude<MintMode, "normal">) {
-    if (!formRef.current) return;
-    if (!formRef.current.reportValidity()) return;
-    await mintFromForm(formRef.current, mode);
-  }
-
-  const defaults = latest ? {
-    timestamp: new Date(latest.date).toISOString().slice(0, 16),
-    durationMin: 60,
-    totalShots: latest.shots,
-    avgSpeed: Math.round(latest.avgSpeed),
-    avgApex: 1.8,
-    peakHr: latest.maxHr,
-  } : { timestamp: "", durationMin: 60, totalShots: 1200, avgSpeed: 65, avgApex: 1.8, peakHr: 155 };
 
   return (
     <div className="grid-view">
+      <div className="wide-card" style={{ width: "100%" }}>
+        <div className="muted" style={{ marginBottom: 8, fontSize: 13, fontWeight: "bold" }}>
+          选择训练场次数据导入
+        </div>
+        <div className="session-rail" aria-label="数据源选择" style={{ marginBottom: 16 }}>
+          {metrics.map((metric, index) => (
+            <button key={metric.id} className={index === selectedIdx ? "active" : ""} onClick={() => setSelectedIdx(index)} type="button">
+              <span>{metric.label}</span>
+              <small>{cnDate(metric.date)}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Card className="wide-card">
         <div className="card-title">
           <span>训练数据录入</span>
           <Plus size={20} />
         </div>
-        <form className="data-form" onSubmit={handleSubmit} ref={formRef}>
+        <form key={selectedIdx} className="data-form" onSubmit={handleSubmit} ref={formRef}>
           <label>
             训练时间
             <input name="timestamp" type="datetime-local" defaultValue={defaults.timestamp} required />
@@ -538,34 +774,63 @@ function MintView({ latest, onBadgeMinted }: { latest?: SessionMetric; onBadgeMi
             心率峰值 (bpm)
             <input name="peakHr" type="number" min="60" max="220" step="1" defaultValue={defaults.peakHr} required />
           </label>
-          <button type="submit" disabled={generating}>{generating ? "生成中..." : "铸造你的徽章"}</button>
-          <button className="secondary" type="button" disabled={generating} onClick={() => handleHiddenMint("hidden")}>
-            想要炫彩的？
-          </button>
-          <button className="secondary black" type="button" disabled={generating} onClick={() => handleHiddenMint("hiddenBlack")}>
-            想要黑白的？
-          </button>
+          <button type="submit" disabled={generating}>{generating ? "生成中..." : "开始铸造"}</button>
         </form>
         {error && <p style={{ color: "#ef4444", marginTop: 8, fontSize: 13 }}>{error}</p>}
       </Card>
-      {badge && (
-        <Card className="badge-studio wide-card">
-          <div className="card-title">
-            <span>铸造结果</span>
-            <Sparkles size={20} />
-          </div>
-          <div className="badge-studio-body">
-            <div className="badge-preview">
-              <BadgeMark badge={badge} />
+
+      {candidates.length > 0 && (
+        <div className="badge-modal-overlay" onClick={() => setCandidates([])}>
+          <div className="badge-modal-card badge-candidate-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="badge-modal-close" onClick={() => setCandidates([])} type="button">
+              <X size={16} />
+            </button>
+            <div className="badge-modal-title" style={{ marginBottom: 16 }}>
+              <h3>铸造成功！</h3>
+              <span>选择你要保存的徽章：</span>
             </div>
-            <div className="badge-actions">
-              <strong>{badgeTitle(badge)}</strong>
-              <p className="muted">
-                线宽 {badge.strokeWidth.toFixed(1)} / 不透明度 {badge.opacity.toFixed(2)} / 变点 {badge.variation.toFixed(2)}
-              </p>
+            
+            <div className="candidate-list">
+              {candidates.map((cand, idx) => {
+                const isSelected = idx === selectedCandidateIdx;
+                return (
+                  <button
+                    key={cand.id}
+                    type="button"
+                    className={`candidate-option${isSelected ? " active" : ""}`}
+                    aria-pressed={isSelected}
+                    onClick={() => setSelectedCandidateIdx(idx)}
+                  >
+                    <div className="candidate-preview">
+                      <BadgeMark badge={cand} />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+
+            {saveError && <p className="badge-save-error">{saveError}</p>}
+
+            <button
+              className="button primary"
+              type="button"
+              onClick={handleSaveSelected}
+              style={{
+                width: "100%",
+                minHeight: 46,
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: "bold",
+                background: "var(--ink)",
+                color: "#ffffff",
+                border: "none",
+                cursor: "pointer"
+              }}
+            >
+              保存至个人画廊
+            </button>
           </div>
-        </Card>
+        </div>
       )}
     </div>
   );
@@ -799,7 +1064,21 @@ const communityBadges: CommunityBadge[] = [
   },
 ];
 
-function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: React.Dispatch<React.SetStateAction<StoredBadge[]>> }) {
+function MineView({
+  badges,
+  setBadges,
+  setView,
+  setSubView,
+  setSelected,
+  metrics,
+}: {
+  badges: StoredBadge[];
+  setBadges: React.Dispatch<React.SetStateAction<StoredBadge[]>>;
+  setView: (v: ViewId) => void;
+  setSubView: (sv: OverviewSubView) => void;
+  setSelected: (idx: number) => void;
+  metrics: SessionMetric[];
+}) {
   const [mineTab, setMineTab] = React.useState<"collection" | "community">("collection");
   const [selectedBadge, setSelectedBadge] = React.useState<StoredBadge | CommunityBadge | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
@@ -823,6 +1102,54 @@ function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: Rea
       setToast("分享链接已复制到剪贴板");
       setTimeout(() => setToast(null), 2000);
     }, 600);
+  }
+
+  function getAssociatedSessionIndex(badge: StoredBadge | CommunityBadge): number {
+    if (!metrics || metrics.length === 0) return 0;
+    
+    // 1. Try exact sessionId match
+    if ("sessionId" in badge && badge.sessionId) {
+      const idx = metrics.findIndex((m) => m.id === badge.sessionId);
+      if (idx !== -1) return idx;
+    }
+
+    // 2. Try date/time match
+    try {
+      const badgeDateStr = new Date(badge.timestamp).toISOString().slice(0, 10);
+      const dateMatched = metrics.findIndex((m) => m.date === badgeDateStr);
+      if (dateMatched !== -1) return dateMatched;
+    } catch { /* ignore date parse issues */ }
+
+    // 3. Fall back to metrics matching
+    const matched = metrics.findIndex(
+      (m) => m.shots === badge.totalShots || m.maxHr === badge.peakHr
+    );
+    if (matched !== -1) return matched;
+    
+    // 4. Fall back to hashing or ID match
+    if (badge.id) {
+      const matchId = String(badge.id).match(/comm-(\d+)/);
+      if (matchId) {
+        return (parseInt(matchId[1], 10) - 1) % metrics.length;
+      }
+      let hash = 0;
+      const str = String(badge.id);
+      for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return Math.abs(hash) % metrics.length;
+    }
+    return 0;
+  }
+
+  const sessionIdx = selectedBadge ? getAssociatedSessionIndex(selectedBadge) : 0;
+  const sessionLabel = `S${sessionIdx + 1}`;
+
+  function handleJumpToData() {
+    setSelected(sessionIdx);
+    setSubView("overview");
+    setView("overview");
+    setSelectedBadge(null);
   }
 
   const isComm = !!(selectedBadge as any)?.isCommunity;
@@ -851,7 +1178,7 @@ function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: Rea
       {mineTab === "collection" ? (
         badges.length ? (
           <>
-            <div className="badge-grid" aria-label="本地生成徽章">
+            <div className="badge-grid-single" aria-label="本地生成徽章">
               {badges.map((badge) => (
                 <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
                   <BadgeMark badge={badge} />
@@ -872,7 +1199,7 @@ function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: Rea
           <p className="muted" style={{ textAlign: "center", marginTop: 48 }}>还没有徽章，去铸造一枚吧。</p>
         )
       ) : (
-        <div className="badge-grid" aria-label="社区徽章画廊">
+        <div className="badge-grid-double" aria-label="社区徽章画廊">
           {communityBadges.map((badge) => (
             <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
               <div className="badge-community-img-wrap">
@@ -904,7 +1231,7 @@ function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: Rea
             </div>
             <div className="badge-modal-title">
               <h3>{commBadge ? commBadge.name : storeBadge && badgeTitle(storeBadge)}</h3>
-              <span>{commBadge ? `由 ${commBadge.creator} 创作的社区创意徽章` : "已铸造为独一无二的数字化训练徽章"}</span>
+              <span>{commBadge ? `由 ${commBadge.creator} 创作的社区创意徽章` : "已铸造为独一无二 of 数字化训练徽章"}</span>
             </div>
             <div className="badge-modal-stats">
               <div className="badge-modal-stat-item">
@@ -973,6 +1300,12 @@ function MineView({ badges, setBadges }: { badges: StoredBadge[]; setBadges: Rea
                 {toast}
               </div>
             )}
+
+            <button className="badge-modal-jump-btn" onClick={handleJumpToData} type="button">
+              <LineChart size={16} />
+              <span>查看该场数据</span>
+            </button>
+
             <div className="badge-modal-actions">
               <button className="secondary" onClick={handleSave} type="button">
                 <Download size={16} />
@@ -1129,7 +1462,7 @@ function TrajectoryStack({ trajectories }: { trajectories: SessionMetric["trajec
   );
 }
 
-function BadgeMark({ badge }: { badge: StoredBadge }) {
+const BadgeMark = React.memo(function BadgeMark({ badge }: { badge: StoredBadge }) {
   const size = 200;
   const pad = 10;
   const uid = badge.id;
@@ -1356,7 +1689,7 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
       </g>
     </svg>
   );
-}
+});
 
 function readBadges(): StoredBadge[] {
   try {
@@ -1364,9 +1697,34 @@ function readBadges(): StoredBadge[] {
     if (!Array.isArray(stored)) {
       return [];
     }
-    return stored.filter(isStoredBadge).slice(0, 80);
+    return stored.filter(isStoredBadge);
   } catch {
     return [];
+  }
+}
+
+function saveBadgeToGallery(badge: StoredBadge) {
+  const existing = readBadges().filter((item) => item.id !== badge.id);
+  const next = [badge, ...existing];
+  const primary = next.slice(0, badgeStorageSoftLimit);
+
+  try {
+    localStorage.setItem(badgeStorageKey, JSON.stringify(primary));
+    return;
+  } catch (primaryError) {
+    const fallback = next.slice(0, badgeStorageMinimum);
+    try {
+      localStorage.setItem(badgeStorageKey, JSON.stringify(fallback));
+      return;
+    } catch {
+      throw new Error(
+        primaryError instanceof DOMException && primaryError.name === "QuotaExceededError"
+          ? "本地存储空间不足，已尝试保留最近 20 枚徽章但仍失败。"
+          : primaryError instanceof Error
+            ? primaryError.message
+            : String(primaryError),
+      );
+    }
   }
 }
 
@@ -1386,7 +1744,8 @@ function isStoredBadge(value: unknown): value is StoredBadge {
     typeof v.invertedPos === "number" &&
     typeof v.strokeWidth === "number" &&
     typeof v.opacity === "number" &&
-    typeof v.variation === "number"
+    typeof v.variation === "number" &&
+    (v.sessionId === undefined || typeof v.sessionId === "string")
   );
 }
 
