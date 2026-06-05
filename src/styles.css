@@ -33,7 +33,7 @@ body,
 #root {
   min-width: 100%;
   width: 100%;
-  min-height: 100dvh;
+  min-height: 100vh;
   background-color: var(--paper);
 }
 
@@ -49,7 +49,7 @@ body {
   position: relative;
   margin: 0;
   min-width: 320px;
-  min-height: 100dvh;
+  min-height: 100vh;
   overflow-x: hidden;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), transparent 32%),
@@ -84,10 +84,10 @@ button {
   position: relative;
   z-index: 1;
   width: min(100%, 1180px);
-  min-height: 100dvh;
+  min-height: 100vh;
   margin: 0 auto;
   padding: max(16px, env(safe-area-inset-top)) 12px calc(104px + env(safe-area-inset-bottom));
-  overflow-x: clip;
+  overflow-x: hidden;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.94), transparent 32%),
     linear-gradient(160deg, transparent 48%, rgba(214, 243, 109, 0.34) 70%, rgba(33, 132, 78, 0.2)),
@@ -563,7 +563,7 @@ h1 {
   position: relative;
   width: max(100%, 300px);
   aspect-ratio: 0.56;
-  max-height: min(62dvh, 560px);
+  max-height: min(62vh, 560px);
   overflow: hidden;
   background:
     linear-gradient(90deg, transparent calc(50% - 1px), rgba(19, 50, 31, 0.3) calc(50% - 1px), rgba(19, 50, 31, 0.3) calc(50% + 1px), transparent calc(50% + 1px)),
