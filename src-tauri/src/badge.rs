@@ -1,8 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const TAU: f64 = std::f64::consts::PI * 2.0;
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct RingPanel {
     pub points: [[f64; 2]; 4],
@@ -11,7 +11,7 @@ pub struct RingPanel {
     pub front: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct BadgeData {
     pub curve_type: String,

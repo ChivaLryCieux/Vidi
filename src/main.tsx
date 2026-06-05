@@ -5,7 +5,6 @@ import { Activity, ArrowDownUp, CircleUserRound, Dumbbell, ExternalLink, Grid2X2
 import * as THREE from "three";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import polyModelUrl from "../Poly-1.glb?url";
 import "./styles.css";
 
 type SessionMetric = {
@@ -55,8 +54,31 @@ type BadgeData = {
 
 type StoredBadge = BadgeData & { id: string; timestamp: number };
 
-const badgeStorageKey = "vidi.badges";
-const badgeStorageLimit = 36;
+type GrowthPoint = {
+  x: number;
+  y: number;
+  label: string;
+  index: number;
+  status: string;
+};
+
+type SessionSummary = {
+  improvement: number;
+  bestSessionIndex: number;
+  bestSessionLabel: string;
+  weakStroke: string;
+  weakStrokeRate: number;
+  recoveryText: string;
+  recoveryLevel: string;
+  radarValues: [number, number, number, number, number];
+  radarLabels: string[];
+  growthPoints: GrowthPoint[];
+  nextTargetRate: number;
+  currentDeepRate: number;
+  currentRallyLength: number;
+  currentMaxHr: number;
+};
+
 type MintMode = "normal" | "hidden" | "hiddenBlack";
 type EthereumProvider = {
   isMetaMask?: boolean;
@@ -98,30 +120,74 @@ const overviewSubTabs = [
 
 type OverviewSubView = (typeof overviewSubTabs)[number]["id"];
 
+// Force WebKitGTK to repaint — the single void-body-offsetHeight in lib.rs fires
+// before React has rendered, so we need an observer that re-flows on every DOM change.
+function useWebKitRepaint() {
+  React.useEffect(() => {
+    const ua = navigator.userAgent;
+    if (!ua.includes("WebKit") || ua.includes("Chrome")) return;
+    let raf = 0;
+    const trigger = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        void document.body.offsetHeight;
+      });
+    };
+    const observer = new MutationObserver(trigger);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, []);
+}
+
 function App() {
+  useWebKitRepaint();
   const [view, setView] = React.useState<ViewId>("overview");
   const [subView, setSubView] = React.useState<OverviewSubView>("overview");
   const [baseMetrics, setBaseMetrics] = React.useState<SessionMetric[]>([]);
+  const [summary, setSummary] = React.useState<SessionSummary | null>(null);
   const [selected, setSelected] = React.useState(0);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const metrics = baseMetrics;
   const current = metrics[selected] || metrics[metrics.length - 1];
   const first = metrics[0];
   const latest = metrics[metrics.length - 1];
 
   React.useEffect(() => {
-    invoke<SessionMetric[]>("get_sessions")
-      .then((sessions) => {
-        setBaseMetrics(sessions);
-        setSelected(sessions.length - 1);
-      })
-      .catch((err) => {
-        console.error("get_sessions failed:", err);
-      });
+    let timeout = setTimeout(() => {
+      setLoadError("加载超时，请检查后端是否正常运行。");
+    }, 15000);
+
+    Promise.allSettled([
+      invoke<SessionMetric[]>("get_sessions"),
+      invoke<SessionSummary>("get_summary"),
+    ]).then(([sessionsResult, summaryResult]) => {
+      clearTimeout(timeout);
+      const errors: string[] = [];
+      if (sessionsResult.status === "fulfilled") {
+        setBaseMetrics(sessionsResult.value);
+        setSelected(sessionsResult.value.length - 1);
+      } else {
+        console.error("get_sessions failed:", sessionsResult.reason);
+        errors.push("训练数据加载失败");
+      }
+      if (summaryResult.status === "fulfilled") {
+        setSummary(summaryResult.value);
+      } else {
+        console.error("get_summary failed:", summaryResult.reason);
+        errors.push("摘要数据加载失败");
+      }
+      if (errors.length) {
+        setLoadError(errors.join("；"));
+      }
+    });
+
+    return () => clearTimeout(timeout);
   }, []);
 
-  const improvement = first && latest ? (first.mistakeRate - latest.mistakeRate) / first.mistakeRate : 0;
-
-  if (!metrics.length) {
+  if (loadError || !metrics.length || !summary) {
     return (
       <main className="app-shell">
         <header className="topbar">
@@ -132,7 +198,20 @@ function App() {
           <div className="mark" aria-label="Vidi mark">V</div>
         </header>
         <section className="view-frame">
-          <p className="muted" style={{ marginTop: 24, textAlign: "center" }}>加载训练数据中...</p>
+          {loadError ? (
+            <div style={{ marginTop: 24, textAlign: "center" }}>
+              <p style={{ color: "#b42318", fontWeight: 800, fontSize: 14 }}>{loadError}</p>
+              <button
+                type="button"
+                style={{ marginTop: 16, minHeight: 48, padding: "0 24px", borderRadius: 18, border: "1px solid rgba(255,255,255,0.8)", background: "linear-gradient(145deg, var(--lime), var(--accent))", color: "var(--accent-deep)", fontWeight: 900 }}
+                onClick={() => window.location.reload()}
+              >
+                重新加载
+              </button>
+            </div>
+          ) : (
+            <p className="muted" style={{ marginTop: 24, textAlign: "center" }}>加载训练数据中...</p>
+          )}
         </section>
         <nav className="bottom-nav" aria-label="主导航">
           {navItems.map((item) => {
@@ -167,7 +246,7 @@ function App() {
           <section className="hero-strip">
             <div>
               <span>半年度成长叙事</span>
-              <strong>{pct(improvement)} 失误率改善</strong>
+              <strong>{pct(summary.improvement)} 失误率改善</strong>
             </div>
             <Sparkles size={28} />
           </section>
@@ -189,10 +268,10 @@ function App() {
                 );
               })}
             </div>
-            {subView === "overview" && <Overview current={current} first={first} latest={latest} metrics={metrics} />}
-            {subView === "growth" && <Growth metrics={metrics} selected={selected} onSelect={setSelected} />}
+            {subView === "overview" && <Overview current={current} summary={summary} metrics={metrics} />}
+            {subView === "growth" && <Growth summary={summary} metrics={metrics} selected={selected} onSelect={setSelected} />}
             {subView === "court" && <CourtView current={current} />}
-            {subView === "load" && <LoadView current={current} metrics={metrics} />}
+            {subView === "load" && <LoadView current={current} summary={summary} metrics={metrics} />}
           </>
         )}
         {view === "mint" && <MintView latest={latest} />}
@@ -280,7 +359,7 @@ function PolyModel() {
     dracoLoader.setDecoderPath("/draco/");
     const loader = new GLTFLoader();
     loader.setDRACOLoader(dracoLoader);
-    loader.load(polyModelUrl, (gltf) => {
+    loader.load("/Poly-1.glb", (gltf) => {
       if (disposed) return;
       fallback.visible = false;
       const model = gltf.scene;
@@ -378,8 +457,7 @@ function SessionRail({ metrics, selected, onSelect }: { metrics: SessionMetric[]
   );
 }
 
-function Overview({ current, first, latest, metrics }: { current: SessionMetric; first: SessionMetric; latest: SessionMetric; metrics: SessionMetric[] }) {
-  const best = metrics.reduce((winner, item) => (item.mistakeRate < winner.mistakeRate ? item : winner), metrics[0]);
+function Overview({ current, summary, metrics }: { current: SessionMetric; summary: SessionSummary; metrics: SessionMetric[] }) {
   return (
     <div className="grid-view">
       <Card className="summary-card">
@@ -402,8 +480,8 @@ function Overview({ current, first, latest, metrics }: { current: SessionMetric;
         </div>
         <Sparkline metrics={metrics} />
         <div className="annotation">
-          <strong>{best.label} 是当前突破点</strong>
-          <span>相对首次训练，最近一次失误率从 {pct(first.mistakeRate)} 到 {pct(latest.mistakeRate)}。</span>
+          <strong>{summary.bestSessionLabel} 是当前突破点</strong>
+          <span>相对首次训练，最近一次失误率从 {pct(metrics[0].mistakeRate)} 到 {pct(metrics[metrics.length - 1].mistakeRate)}。</span>
         </div>
       </Card>
       <Card>
@@ -411,28 +489,20 @@ function Overview({ current, first, latest, metrics }: { current: SessionMetric;
           <span>技术雷达</span>
           <Radar size={20} />
         </div>
-        <RadarChart metric={current} />
+        <RadarChart summary={summary} />
       </Card>
       <Card>
         <div className="card-title">
           <span>行动焦点</span>
           <Dumbbell size={20} />
         </div>
-        <ActionList metric={current} />
+        <ActionList summary={summary} />
       </Card>
     </div>
   );
 }
 
-function Growth({ metrics, selected, onSelect }: { metrics: SessionMetric[]; selected: number; onSelect: (value: number) => void }) {
-  const points = metrics.map((metric) => 1 - metric.mistakeRate);
-  const min = Math.min(...points) - 0.02;
-  const max = Math.max(...points) + 0.02;
-  const coords = metrics.map((metric, index) => {
-    const x = 20 + (index / Math.max(metrics.length - 1, 1)) * 260;
-    const y = 190 - ((1 - metric.mistakeRate - min) / (max - min)) * 150;
-    return { x, y, metric, index };
-  });
+function Growth({ summary, metrics, selected, onSelect }: { summary: SessionSummary; metrics: SessionMetric[]; selected: number; onSelect: (value: number) => void }) {
   return (
     <div className="grid-view">
       <Card className="wide-card">
@@ -442,11 +512,11 @@ function Growth({ metrics, selected, onSelect }: { metrics: SessionMetric[]; sel
         </div>
         <svg className="growth-chart" viewBox="0 0 320 220" role="img" aria-label="训练稳定性趋势">
           <path d="M20 195H300 M20 45H300 M20 95H300 M20 145H300" className="grid-line" />
-          <polyline points={coords.map((p) => `${p.x},${p.y}`).join(" ")} className="trend-line" />
-          {coords.map((point) => (
-            <g key={point.metric.id} onClick={() => onSelect(point.index)} className="chart-point">
-              <circle cx={point.x} cy={point.y} r={selected === point.index ? 8 : 5} className={point.metric.status === "突破期" ? "breakthrough" : ""} />
-              <text x={point.x} y={210} textAnchor="middle">{point.metric.label}</text>
+          <polyline points={summary.growthPoints.map((p) => `${p.x},${p.y}`).join(" ")} className="trend-line" />
+          {summary.growthPoints.map((point) => (
+            <g key={metrics[point.index].id} onClick={() => onSelect(point.index)} className="chart-point">
+              <circle cx={point.x} cy={point.y} r={selected === point.index ? 8 : 5} className={point.status === "突破期" ? "breakthrough" : ""} />
+              <text x={point.x} y={210} textAnchor="middle">{point.label}</text>
             </g>
           ))}
         </svg>
@@ -512,7 +582,7 @@ function CourtView({ current }: { current: SessionMetric }) {
   );
 }
 
-function LoadView({ current, metrics }: { current: SessionMetric; metrics: SessionMetric[] }) {
+function LoadView({ current, summary, metrics }: { current: SessionMetric; summary: SessionSummary; metrics: SessionMetric[] }) {
   return (
     <div className="grid-view">
       <Card className="wide-card">
@@ -548,11 +618,11 @@ function LoadView({ current, metrics }: { current: SessionMetric; metrics: Sessi
       <Card>
         <div className="card-title">
           <span>恢复信号</span>
-          <span>{Math.round(current.avgHr)} BPM</span>
+          <span>{Math.round(summary.currentMaxHr)} BPM</span>
         </div>
         <div className="recovery">
-          <strong>{current.maxHr < 150 ? "强度可控" : "中高强度"}</strong>
-          <p>最高心率 {current.maxHr}，回合均长 {current.rallyLength.toFixed(1)} 拍。下一次训练建议把深区落点比例稳定在 {pct(Math.min(current.deepRate + 0.04, 0.72))}。</p>
+          <strong>{summary.recoveryLevel}</strong>
+          <p>{summary.recoveryText}</p>
         </div>
       </Card>
     </div>
@@ -570,28 +640,21 @@ function MintView({ latest }: { latest?: SessionMetric }) {
     setGenerating(true);
     setError(null);
     try {
-      const mintedAt = Date.now();
       const command = mode === "hiddenBlack"
         ? "gen_hidden_black_badge"
         : mode === "hidden"
           ? "gen_hidden_badge"
           : "gen_badge";
       const data = await invoke<BadgeData>(command, {
-        timestamp: mintedAt,
+        timestamp: Date.now(),
         durationMin: Number(form.get("durationMin")),
         totalShots: Number(form.get("totalShots")),
         avgSpeed: Number(form.get("avgSpeed")),
         avgApex: Number(form.get("avgApex")),
         peakHr: Number(form.get("peakHr")),
       });
-      const stored: StoredBadge = { ...data, id: `${mintedAt}-${mode}`, timestamp: mintedAt };
-      const compactStored = compactBadgeForStorage(stored);
-      setBadge(compactStored);
-      try {
-        writeBadges([compactStored, ...readBadges()]);
-      } catch (storageErr) {
-        setError(`徽章已生成，但本地保存失败: ${storageErr instanceof Error ? storageErr.message : String(storageErr)}`);
-      }
+      const stored = await invoke<StoredBadge>("save_badge", { badge: data, mode });
+      setBadge(stored);
     } catch (err) {
       setError(`${mode === "normal" ? "铸造" : "隐藏款铸造"}失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -685,10 +748,14 @@ function MintView({ latest }: { latest?: SessionMetric }) {
 }
 
 function MineView() {
-  const [badges] = React.useState<StoredBadge[]>(readBadges);
+  const [badges, setBadges] = React.useState<StoredBadge[]>([]);
   const [walletAddress, setWalletAddress] = React.useState("");
   const [walletError, setWalletError] = React.useState("");
   const [connecting, setConnecting] = React.useState(false);
+
+  React.useEffect(() => {
+    invoke<StoredBadge[]>("get_badges").then(setBadges).catch(() => {});
+  }, []);
 
   async function connectInjectedWallet() {
     setWalletError("");
@@ -811,45 +878,36 @@ function Sparkline({ metrics }: { metrics: SessionMetric[] }) {
   );
 }
 
-function RadarChart({ metric }: { metric: SessionMetric }) {
-  const values = [
-    metric.consistency,
-    metric.deepRate,
-    Math.min(metric.avgSpeed / 95, 1),
-    Math.min(metric.avgSpin / 3200, 1),
-    metric.confidence,
-  ];
-  const labels = ["稳定", "深区", "速度", "旋转", "信心"];
+function RadarChart({ summary }: { summary: SessionSummary }) {
   const center = 80;
   const radius = 62;
-  const points = values.map((value, index) => {
-    const angle = -Math.PI / 2 + (index / values.length) * Math.PI * 2;
+  const points = summary.radarValues.map((value, index) => {
+    const angle = -Math.PI / 2 + (index / summary.radarValues.length) * Math.PI * 2;
     return `${center + Math.cos(angle) * radius * value},${center + Math.sin(angle) * radius * value}`;
   });
   return (
     <svg className="radar" viewBox="0 0 160 160">
       {[0.33, 0.66, 1].map((scale) => (
-        <polygon key={scale} points={values.map((_, index) => {
-          const angle = -Math.PI / 2 + (index / values.length) * Math.PI * 2;
+        <polygon key={scale} points={summary.radarValues.map((_, index) => {
+          const angle = -Math.PI / 2 + (index / summary.radarValues.length) * Math.PI * 2;
           return `${center + Math.cos(angle) * radius * scale},${center + Math.sin(angle) * radius * scale}`;
         }).join(" ")} className="radar-grid" />
       ))}
       <polygon points={points.join(" ")} className="radar-shape" />
-      {labels.map((label, index) => {
-        const angle = -Math.PI / 2 + (index / labels.length) * Math.PI * 2;
+      {summary.radarLabels.map((label, index) => {
+        const angle = -Math.PI / 2 + (index / summary.radarLabels.length) * Math.PI * 2;
         return <text key={label} x={center + Math.cos(angle) * 76} y={center + Math.sin(angle) * 76 + 4} textAnchor="middle">{label}</text>;
       })}
     </svg>
   );
 }
 
-function ActionList({ metric }: { metric: SessionMetric }) {
-  const weakStroke = metric.strokeStats.reduce((weak, item) => (item.rate > weak.rate ? item : weak), metric.strokeStats[0]);
+function ActionList({ summary }: { summary: SessionSummary }) {
   return (
     <div className="actions">
-      <p><strong>保持：</strong>当前深区控制为 {pct(metric.deepRate)}，继续把高质量回球作为信心来源。</p>
-      <p><strong>推进：</strong>{weakStroke.stroke} 失误率 {pct(weakStroke.rate)}，下一课用 15 分钟做稳定线路。</p>
-      <p><strong>目标：</strong>把下一次失误率压到 {pct(Math.max(metric.mistakeRate - 0.015, 0.08))}。</p>
+      <p><strong>保持：</strong>当前深区控制为 {pct(summary.currentDeepRate)}，继续把高质量回球作为信心来源。</p>
+      <p><strong>推进：</strong>{summary.weakStroke} 失误率 {pct(summary.weakStrokeRate)}，下一课用 15 分钟做稳定线路。</p>
+      <p><strong>目标：</strong>把下一次失误率压到 {pct(summary.nextTargetRate)}。</p>
     </div>
   );
 }
@@ -1096,87 +1154,35 @@ function BadgeMark({ badge }: { badge: StoredBadge }) {
   );
 }
 
-function readBadges(): StoredBadge[] {
-  try {
-    const stored = JSON.parse(localStorage.getItem(badgeStorageKey) || "[]") as unknown;
-    if (!Array.isArray(stored)) {
-      return [];
-    }
-    return stored.filter(isStoredBadge).slice(0, badgeStorageLimit);
-  } catch {
-    return [];
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: string | null }> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(err: unknown) {
+    return { error: err instanceof Error ? err.message : String(err) };
   }
-}
-
-function writeBadges(badges: StoredBadge[]) {
-  const compacted = badges.map(compactBadgeForStorage);
-  let limit = Math.min(compacted.length, badgeStorageLimit);
-  let lastError: unknown = null;
-
-  while (limit > 0) {
-    try {
-      localStorage.setItem(badgeStorageKey, JSON.stringify(compacted.slice(0, limit)));
-      return;
-    } catch (err) {
-      lastError = err;
-      limit = Math.floor(limit / 2);
+  render() {
+    if (this.state.error) {
+      return (
+        <main style={{ padding: 32, textAlign: "center", background: "#f4f9ed", minHeight: "100vh" }}>
+          <h2 style={{ color: "#b42318" }}>渲染出错</h2>
+          <p style={{ color: "#555", fontSize: 14 }}>{this.state.error}</p>
+          <button
+            type="button"
+            style={{ marginTop: 16, minHeight: 48, padding: "0 24px", borderRadius: 18, border: "1px solid rgba(255,255,255,0.8)", background: "linear-gradient(145deg, #d6f36d, #21844e)", color: "#0e633b", fontWeight: 900 }}
+            onClick={() => window.location.reload()}
+          >
+            重新加载
+          </button>
+        </main>
+      );
     }
+    return this.props.children;
   }
-
-  throw lastError instanceof Error ? lastError : new Error("本地存储空间不足。");
-}
-
-function compactBadgeForStorage(badge: StoredBadge): StoredBadge {
-  return {
-    ...badge,
-    mergedPoints: badge.mergedPoints.map(compactPoint2),
-    zorderPoints: badge.zorderPoints.map(compactPoint3),
-    ringPanels: badge.ringPanels?.map((panel) => ({
-      ...panel,
-      opacity: compactNumber(panel.opacity),
-      points: panel.points.map(compactPoint2) as [[number, number], [number, number], [number, number], [number, number]],
-    })),
-    invertedPos: compactNumber(badge.invertedPos),
-    strokeWidth: compactNumber(badge.strokeWidth),
-    opacity: compactNumber(badge.opacity),
-    variation: compactNumber(badge.variation),
-  };
-}
-
-function compactNumber(value: number) {
-  return Math.round(value * 10000) / 10000;
-}
-
-function compactPoint2(point: [number, number]): [number, number] {
-  return [compactNumber(point[0]), compactNumber(point[1])];
-}
-
-function compactPoint3(point: [number, number, number]): [number, number, number] {
-  return [compactNumber(point[0]), compactNumber(point[1]), compactNumber(point[2])];
-}
-
-function isStoredBadge(value: unknown): value is StoredBadge {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === "string" &&
-    typeof v.timestamp === "number" &&
-    (v.curveType === "2d" || v.curveType === "3d" || v.curveType === "rings" || v.curveType === "ringsBlack") &&
-    Array.isArray(v.mergedPoints) &&
-    Array.isArray(v.zorderPoints) &&
-    (v.ringPanels === undefined || Array.isArray(v.ringPanels)) &&
-    typeof v.colorStart === "string" &&
-    typeof v.colorEnd === "string" &&
-    typeof v.colorInverted === "string" &&
-    typeof v.invertedPos === "number" &&
-    typeof v.strokeWidth === "number" &&
-    typeof v.opacity === "number" &&
-    typeof v.variation === "number"
-  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );
