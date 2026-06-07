@@ -1,0 +1,55 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library", "js_run_binary")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+package(default_visibility = ["//visibility:public"])
+
+# 链接所有 npm 依赖到 node_modules/
+npm_link_all_packages(name = "node_modules")
+
+# ── TypeScript 类型检查（替代 tsc --noEmit）──
+ts_project(
+    name = "typecheck",
+    srcs = glob(
+        ["*.tsx", "*.ts"],
+        exclude = ["vite-env.d.ts"],
+    ),
+    tsconfig = "tsconfig.json",
+    deps = [":node_modules"],
+    declaration = False,
+    no_emit = True,
+)
+
+# ── 前端源文件 ──
+js_library(
+    name = "srcs",
+    srcs = glob([
+        "*.tsx",
+        "*.ts",
+        "*.css",
+    ]),
+    deps = [":node_modules"],
+)
+
+# ── Vite 打包（替代 npm run build）──
+js_run_binary(
+    name = "frontend_dist",
+    tool = ":node_modules/.bin/vite",
+    srcs = [
+        ":srcs",
+        "//public:assets",
+        "//:package.json",
+        "//:vite.config.ts",
+        "//:tsconfig.json",
+        "//:index.html",
+    ],
+    outs = ["dist"],
+    args = [
+        "build",
+        "--outDir",
+        "src/dist",
+    ],
+    chdir = "$(RULEDIR)/..",
+    mnemonic = "ViteBuild",
+    progress_message = "Building frontend with Vite",
+)

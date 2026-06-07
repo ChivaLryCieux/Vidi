@@ -1,0 +1,43 @@
+module(name = "vidi", version = "0.1.0")
+
+# ── Bazel 最低版本 ──
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "platforms", version = "0.0.10")
+
+# ── Node.js / npm ──
+bazel_dep(name = "rules_nodejs", version = "6.3.0")
+bazel_dep(name = "aspect_rules_js", version = "2.2.0")
+bazel_dep(name = "aspect_rules_ts", version = "3.5.0")
+
+node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node")
+node.toolchain(node_version = "22.12.0")
+
+# npm 依赖解析：读取 package-lock.json (lockfileVersion 3)
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(
+    name = "npm",
+    data = [
+        "//:package.json",
+        "//:package-lock.json",
+    ],
+)
+use_repo(npm, "npm")
+
+# ── Rust ──
+bazel_dep(name = "rules_rust", version = "0.56.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(edition = "2021")
+use_repo(rust, "rust_toolchains")
+
+# Cargo 依赖解析
+bazel_dep(name = "cargo-bazel", version = "0.56.0")
+
+crates = use_extension("@rules_rust//crate_universe:extensions.bzl", "crates")
+crates.from_cargo(
+    name = "crate_index",
+    cargo_lockfile = "//src-tauri:Cargo.lock",
+    manifests = ["//src-tauri:Cargo.toml"],
+    generator = "@cargo-bazel//:cargo-bazel",
+)
+use_repo(crates, "crate_index")

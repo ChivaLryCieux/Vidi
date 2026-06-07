@@ -1,0 +1,45 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+load("@crate_index//:defs.bzl", "all_crate_deps")
+
+package(default_visibility = ["//visibility:public"])
+
+# ── Rust 库（Tauri 后端逻辑）──
+rust_library(
+    name = "vidi_lib",
+    srcs = [
+        "src/lib.rs",
+        "src/commands.rs",
+        "src/data.rs",
+        "src/metrics.rs",
+        "src/summary.rs",
+        "src/badge.rs",
+        "src/storage.rs",
+    ],
+    crate_features = ["devtools"],
+    edition = "2021",
+    deps = all_crate_deps(normal = True) + [
+        "//tennis_training_data:data_files",
+    ],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+    data = [
+        "tauri.conf.json",
+        "//tennis_training_data:data_files",
+    ],
+    rustc_env = {
+        "TAURI_CONFIG": "$(location :tauri.conf.json)",
+    },
+)
+
+# ── Rust 二进制（应用入口）──
+rust_binary(
+    name = "vidi",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    deps = [":vidi_lib"],
+)
+
+# ── Tauri 配置文件（单独暴露给其他规则引用）──
+filegroup(
+    name = "tauri_conf",
+    srcs = ["tauri.conf.json"],
+)

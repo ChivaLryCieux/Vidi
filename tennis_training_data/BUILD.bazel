@@ -1,0 +1,6 @@
+package(default_visibility = ["//src-tauri:__pkg__"])
+
+filegroup(
+    name = "data_files",
+    srcs = glob(["**/training_data.json"]),
+)

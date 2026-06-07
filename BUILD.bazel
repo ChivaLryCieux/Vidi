@@ -1,0 +1,73 @@
+load("@aspect_rules_js//js:defs.bzl", "js_library")
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+package(default_visibility = ["//visibility:public"])
+
+# npm 根级依赖链接
+npm_link_all_packages(name = "node_modules")
+
+# ── 顶层源文件集合 ──
+js_library(
+    name = "root_files",
+    srcs = [
+        "index.html",
+        "package.json",
+        "vite.config.ts",
+        "tsconfig.json",
+    ],
+    deps = [":node_modules"],
+)
+
+# ── 完整构建入口 ──
+# 使用方式：
+#   bazel build //:tauri_bundle
+#
+# 构建流程：
+#   1. //src:frontend_dist  → Vite 打包前端到 dist/
+#   2. //src-tauri:vidi     → Cargo 编译 Rust 二进制
+#   3. 本规则组装最终产物
+genrule(
+    name = "tauri_bundle",
+    srcs = [
+        "//src:frontend_dist",
+        "//src-tauri:vidi",
+        "//public:assets",
+        "//src-tauri:tauri_conf",
+    ],
+    outs = ["tauri_bundle_out"],
+    cmd = """
+        mkdir -p $@
+
+        # 复制前端产物
+        cp -r $(location //src:frontend_dist)/* $@/ 2>/dev/null || true
+
+        # 复制 Rust 二进制
+        cp $(location //src-tauri:vidi) $@/vidi 2>/dev/null || true
+
+        # 复制静态资源
+        cp -r $(location //public:assets) $@/public 2>/dev/null || true
+
+        echo "Build complete. Output in $@"
+    """,
+    visibility = ["//visibility:public"],
+)
+
+# ── 开发用快捷目标 ──
+
+# 仅前端类型检查
+alias(
+    name = "typecheck",
+    actual = "//src:typecheck",
+)
+
+# 仅前端打包
+alias(
+    name = "frontend",
+    actual = "//src:frontend_dist",
+)
+
+# 仅 Rust 编译
+alias(
+    name = "backend",
+    actual = "//src-tauri:vidi",
+)

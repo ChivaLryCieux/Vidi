@@ -67,3 +67,7 @@ temp/
 *.synctex.gz
 
 ppt/
+
+# Bazel
+bazel-*
+.bazelrc.local

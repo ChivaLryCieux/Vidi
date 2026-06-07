@@ -1,0 +1,22 @@
+# 通用构建选项
+build --spawn_strategy=local
+build --incompatible_strict_action_env
+
+# 本地磁盘缓存
+build --disk_cache=~/.cache/bazel-vidi
+
+# Rust 工具链
+build --@rules_rust//rust/settings:experimental_use_cc_common_link=true
+
+# 显示进度
+build --show_progress_rate_limit=5
+
+# 平台配置
+build:linux --host_platform=//platforms:linux_x64
+build:macos --host_platform=//platforms:macos_arm64
+build:windows --host_platform=//platforms:windows_x64
+
+# 开发用快捷方式
+run --noincompatible_strict_action_env
+test --test_output=errors
+test --test_verbose_timeout_warnings
