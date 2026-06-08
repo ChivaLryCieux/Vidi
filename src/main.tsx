@@ -693,13 +693,6 @@ function MintView({
   const selectedTone = visualTones.find((tone) => tone.id === visualTone) ?? visualTones[0];
   const selectedElement = visualElements.find((element) => element.id === visualElement) ?? visualElements[0];
   const selectedCandidate = candidates[selectedCandidateIdx];
-  const dataSignals = [
-    { label: "训练时长", value: `${mintForm.durationMin} 分钟`, effect: "决定螺旋延展长度" },
-    { label: "总拍数", value: `${mintForm.totalShots} 拍`, effect: "影响条带密度" },
-    { label: "拍速均值", value: `${mintForm.avgSpeed} km/h`, effect: "推动旋转张力" },
-    { label: "轨迹顶点", value: `${mintForm.avgApex} m`, effect: "改变空间起伏" },
-    { label: "心率峰值", value: `${mintForm.peakHr} bpm`, effect: "控制高光强度" },
-  ];
 
   React.useEffect(() => {
     setMintForm(defaults);
@@ -849,39 +842,36 @@ function MintView({
               <h2>数据开始变成图形</h2>
               <p>你可以微调本次训练数据。系统会把数值映射为螺旋密度、延展、起伏和高光。</p>
             </div>
-            <div className="mint-signal-grid">
-              {dataSignals.map((signal) => (
-                <div key={signal.label} className="mint-signal">
-                  <label>{signal.label}</label>
-                  <strong>{signal.value}</strong>
-                  <span>{signal.effect}</span>
-                </div>
-              ))}
-            </div>
             <div className="data-form mint-data-form">
               <label>
                 训练时间
                 <input type="datetime-local" value={mintForm.timestamp} onChange={(event) => updateMintForm("timestamp", event.target.value)} required />
+                <span>作为本次训练徽章的时间指纹</span>
               </label>
               <label>
                 训练时长
                 <input type="number" min="1" step="1" value={mintForm.durationMin} onChange={(event) => updateMintForm("durationMin", Number(event.target.value))} required />
+                <span>决定螺旋延展长度</span>
               </label>
               <label>
                 总拍数
                 <input type="number" min="1" step="1" value={mintForm.totalShots} onChange={(event) => updateMintForm("totalShots", Number(event.target.value))} required />
+                <span>影响条带密度</span>
               </label>
               <label>
                 拍速均值
                 <input type="number" min="1" step="0.1" value={mintForm.avgSpeed} onChange={(event) => updateMintForm("avgSpeed", Number(event.target.value))} required />
+                <span>推动旋转张力</span>
               </label>
               <label>
                 轨迹顶点
                 <input type="number" min="0.1" max="5" step="0.01" value={mintForm.avgApex} onChange={(event) => updateMintForm("avgApex", Number(event.target.value))} required />
+                <span>改变空间起伏</span>
               </label>
               <label>
                 心率峰值
                 <input type="number" min="60" max="220" step="1" value={mintForm.peakHr} onChange={(event) => updateMintForm("peakHr", Number(event.target.value))} required />
+                <span>控制高光强度</span>
               </label>
             </div>
             <div className="mint-story-actions">
@@ -1638,7 +1628,7 @@ function MineView({
                 fontSize: 12,
                 fontWeight: "bold",
                 color: "var(--ink)",
-                background: "rgba(231, 249, 173, 0.4)",
+                background: "rgba(30, 58, 47, 0.08)",
                 padding: "6px 16px",
                 borderRadius: 12,
                 marginTop: 4,

@@ -2,8 +2,8 @@ use serde::Serialize;
 
 const TAU: f64 = std::f64::consts::PI * 2.0;
 const HALF_PI: f64 = std::f64::consts::FRAC_PI_2;
-const GENERATED_PANEL_BUDGET: usize = 4200;
-const MIN_COMPRESSED_STRAND_RATIO: f64 = 0.45;
+const GENERATED_PANEL_BUDGET: usize = 7800;
+const MIN_COMPRESSED_STRAND_RATIO: f64 = 0.22;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -140,7 +140,7 @@ fn compact_panel_geometry(
     }
 
     let keep_ratios: Vec<f64> = (0..strand_count)
-        .map(|index| 0.42 + digest_unit(digest, 24 + index) * 0.16)
+        .map(|index| 0.68 + digest_unit(digest, 24 + index) * 0.18)
         .collect();
 
     let mut ranked: Vec<(usize, f64)> = (0..strand_count)
@@ -346,7 +346,7 @@ fn overlay_color(
         shade_hsl(
             base.0,
             base.1,
-            (base.2 + light_boost).clamp(10.0, 94.0),
+            (base.2 + light_boost + 10.0).clamp(34.0, 96.0),
             1.0,
             0.0,
         )
@@ -354,9 +354,9 @@ fn overlay_color(
         shade_hsl(
             (base.0 + index as f64 * 12.0).rem_euclid(360.0),
             base.1,
-            (base.2 + light_boost).clamp(20.0, 92.0),
-            1.0,
-            0.2,
+            (base.2 + light_boost).clamp(36.0, 94.0),
+            1.08,
+            0.32,
         )
     }
 }
@@ -421,9 +421,9 @@ fn add_court_overlays(
     digest: &[u8; 32],
     shots_fac: f64,
 ) {
-    let color = overlay_color(theme, palette, 1, 18.0);
-    let opacity = 0.16 + shots_fac * 0.12;
-    let width = 0.005 + shots_fac * 0.004;
+    let color = overlay_color(theme, palette, 1, 24.0);
+    let opacity = 0.36 + shots_fac * 0.18;
+    let width = 0.012 + shots_fac * 0.008;
     let x0 = 0.18 + digest_unit(digest, 80) * 0.04;
     let x1 = 0.82 - digest_unit(digest, 81) * 0.04;
     let y0 = 0.22 + digest_unit(digest, 82) * 0.04;
@@ -465,9 +465,9 @@ fn add_racket_overlays(
     shots_fac: f64,
     speed_fac: f64,
 ) {
-    let color = overlay_color(theme, palette, 2, 16.0);
-    let opacity = 0.18 + speed_fac * 0.16;
-    let width = 0.006 + shots_fac * 0.004;
+    let color = overlay_color(theme, palette, 2, 24.0);
+    let opacity = 0.42 + speed_fac * 0.22;
+    let width = 0.014 + shots_fac * 0.008;
     let cx = 0.5 + (digest_unit(digest, 86) - 0.5) * 0.06;
     let cy = 0.52 + (digest_unit(digest, 87) - 0.5) * 0.06;
     let rx = 0.31 + speed_fac * 0.05;
@@ -509,8 +509,8 @@ fn add_ball_overlays(
     shots_fac: f64,
     hr_fac: f64,
 ) {
-    let count = 14 + (shots_fac * 14.0).round() as usize;
-    let opacity = 0.18 + hr_fac * 0.16;
+    let count = 18 + (shots_fac * 18.0).round() as usize;
+    let opacity = 0.38 + hr_fac * 0.24;
     for i in 0..count {
         let t = i as f64 / count as f64;
         let angle = t * TAU * (1.45 + digest_unit(digest, 88) * 0.55);
@@ -518,8 +518,8 @@ fn add_ball_overlays(
         let jitter = (digest_unit(digest, 89 + i) - 0.5) * 0.045;
         let x = 0.5 + (radius + jitter) * angle.cos();
         let y = 0.5 + (radius + jitter) * angle.sin();
-        let s = 0.012 + digest_unit(digest, 104 + i) * 0.014 + shots_fac * 0.006;
-        let color = overlay_color(theme, palette, i, 20.0);
+        let s = 0.018 + digest_unit(digest, 104 + i) * 0.02 + shots_fac * 0.008;
+        let color = overlay_color(theme, palette, i, 26.0);
         push_overlay_panel(
             sorted,
             RingPanel {
@@ -541,9 +541,9 @@ fn add_number_overlays(
     shots_fac: f64,
     speed_fac: f64,
 ) {
-    let color = overlay_color(theme, palette, 3, 18.0);
-    let count = 18 + (speed_fac * 12.0).round() as usize;
-    let opacity = 0.14 + shots_fac * 0.14;
+    let color = overlay_color(theme, palette, 3, 24.0);
+    let count = 22 + (speed_fac * 16.0).round() as usize;
+    let opacity = 0.34 + shots_fac * 0.2;
     for i in 0..count {
         let angle = i as f64 / count as f64 * TAU + digest_unit(digest, 120) * 0.25;
         let r0 = 0.32 + digest_unit(digest, 121 + i) * 0.04;
@@ -554,7 +554,7 @@ fn add_number_overlays(
         let y1 = 0.5 + r1 * angle.sin();
         push_overlay_panel(
             sorted,
-            segment_panel(x0, y0, x1, y1, 0.005, color.clone(), opacity),
+            segment_panel(x0, y0, x1, y1, 0.012, color.clone(), opacity),
             1.18 + i as f64 * 0.001,
         );
     }

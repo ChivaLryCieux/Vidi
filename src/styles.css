@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════
    Vidi — Apple-style frosted glass redesign
-   Palette preserved: accent #e7f9ad · ink #1E3A2F · paper #fcf9f4
+   Palette: ink #1E3A2F · gray #86868b · paper #ffffff
    ═══════════════════════════════════════════════════════ */
 
 :root {
@@ -713,7 +713,7 @@ h1 {
   aspect-ratio: 1;
   border: 1px dashed rgba(0, 0, 0, 0.08);
   border-radius: 999px;
-  background: rgba(231, 249, 173, 0.15);
+  background: rgba(30, 58, 47, 0.06);
   box-shadow: inset 0 0 0 12px rgba(255, 255, 255, 0.15);
 }
 
@@ -873,7 +873,7 @@ h1 {
 .data-form input:focus {
   outline: none;
   background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 0 0 3px rgba(231, 249, 173, 0.4);
+  box-shadow: 0 0 0 3px rgba(30, 58, 47, 0.16);
 }
 
 .data-form button {
@@ -957,16 +957,16 @@ h1 {
 
 .mint-progress button.active,
 .mint-progress button.done {
-  color: var(--ink);
-  background: rgba(231, 249, 173, 0.44);
-  border-color: rgba(30, 58, 47, 0.14);
+  color: #ffffff;
+  background: var(--ink);
+  border-color: rgba(30, 58, 47, 0.24);
 }
 
 .mint-story-card {
   min-height: 560px;
-  border-radius: 28px;
-  padding: 24px;
-  background: rgba(255, 255, 255, 0.56);
+  border-radius: 20px;
+  padding: 20px;
+  background: var(--card);
   box-shadow: var(--glass-shadow), var(--glass-inner);
   border: 1px solid rgba(255, 255, 255, 0.48);
 }
@@ -1004,14 +1004,12 @@ h1 {
   margin: 0;
 }
 
-.mint-signal-grid,
 .mint-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.mint-signal,
 .mint-choice-grid button {
   min-height: 92px;
   border-radius: 16px;
@@ -1021,25 +1019,6 @@ h1 {
   box-shadow: var(--glass-inner);
 }
 
-.mint-signal {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.mint-signal label {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.mint-signal strong {
-  color: var(--ink);
-  font-size: 17px;
-  font-weight: 950;
-}
-
-.mint-signal span,
 .mint-choice-grid span {
   color: var(--muted);
   font-size: 12px;
@@ -1048,6 +1027,17 @@ h1 {
 
 .mint-data-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mint-data-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.mint-data-form input:focus {
+  box-shadow: 0 0 0 3px rgba(30, 58, 47, 0.16);
 }
 
 .mint-choice-group {
@@ -1063,13 +1053,23 @@ h1 {
 }
 
 .mint-choice-grid button.active {
-  background: rgba(231, 249, 173, 0.5);
-  border-color: rgba(30, 58, 47, 0.2);
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
 }
 
 .mint-choice-grid strong {
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
+}
+
+.mint-choice-grid button.active strong,
+.mint-choice-grid button.active span {
+  color: #ffffff;
+}
+
+.mint-choice-grid button span {
+  font-size: 13px;
 }
 
 .mint-summary {
@@ -1081,7 +1081,7 @@ h1 {
 .mint-summary span {
   border-radius: 999px;
   padding: 6px 12px;
-  background: rgba(231, 249, 173, 0.5);
+  background: rgba(30, 58, 47, 0.08);
   color: var(--ink);
   font-size: 12px;
   font-weight: 900;
@@ -1160,7 +1160,6 @@ h1 {
     min-height: 50px;
   }
 
-  .mint-signal-grid,
   .mint-data-form,
   .mint-choice-grid {
     grid-template-columns: 1fr;
@@ -1219,7 +1218,7 @@ button:active {
 
 button:focus-visible,
 input:focus-visible {
-  outline: 2px solid rgba(231, 249, 173, 0.6);
+  outline: 2px solid rgba(30, 58, 47, 0.38);
   outline-offset: 2px;
 }
 
@@ -1523,7 +1522,7 @@ input:focus-visible {
   inset: -9px;
   border-radius: 50%;
   background:
-    conic-gradient(from 24deg, rgba(30, 58, 47, 0.95), rgba(231, 249, 173, 0.86), rgba(255, 255, 255, 0.62), rgba(30, 58, 47, 0.95)),
+    conic-gradient(from 24deg, rgba(30, 58, 47, 0.95), rgba(255, 255, 255, 0.72), rgba(134, 134, 139, 0.36), rgba(30, 58, 47, 0.95)),
     linear-gradient(90deg, rgba(30, 58, 47, 0.84), rgba(255, 255, 255, 0.18), rgba(30, 58, 47, 0.78));
   box-shadow: 0 20px 44px rgba(30, 58, 47, 0.2);
   transform: translateZ(-10px);
@@ -1539,12 +1538,12 @@ input:focus-visible {
   backface-visibility: hidden;
   background:
     radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.92), transparent 18%),
-    radial-gradient(circle at 68% 72%, rgba(231, 249, 173, 0.42), transparent 34%),
+    radial-gradient(circle at 68% 72%, rgba(30, 58, 47, 0.16), transparent 34%),
     rgba(255, 255, 255, 0.82);
   border: 8px solid rgba(30, 58, 47, 0.92);
   box-shadow:
     inset 0 0 0 2px rgba(255, 255, 255, 0.7),
-    inset 0 0 34px rgba(231, 249, 173, 0.34),
+    inset 0 0 34px rgba(30, 58, 47, 0.12),
     0 18px 42px rgba(0, 0, 0, 0.12);
 }
 
@@ -1555,7 +1554,7 @@ input:focus-visible {
 .badge-coin-back {
   transform: rotateY(180deg) translateZ(11px);
   background:
-    radial-gradient(circle at 50% 42%, rgba(231, 249, 173, 0.32), transparent 42%),
+    radial-gradient(circle at 50% 42%, rgba(30, 58, 47, 0.12), transparent 42%),
     repeating-conic-gradient(from 0deg, rgba(30, 58, 47, 0.08) 0 8deg, transparent 8deg 18deg),
     rgba(252, 249, 244, 0.95);
 }
@@ -1565,8 +1564,8 @@ input:focus-visible {
   inset: 18px;
   border-radius: 50%;
   background:
-    conic-gradient(from 140deg, rgba(52, 211, 153, 0.08), rgba(250, 204, 21, 0.32), rgba(56, 189, 248, 0.24), rgba(244, 114, 182, 0.22), rgba(52, 211, 153, 0.08));
-  filter: blur(7px) saturate(140%);
+    conic-gradient(from 140deg, rgba(30, 58, 47, 0.24), rgba(255, 255, 255, 0.44), rgba(134, 134, 139, 0.24), rgba(30, 58, 47, 0.24));
+  filter: blur(7px);
   mix-blend-mode: screen;
   animation: badgeCoinGlow 3.6s ease-in-out infinite alternate;
 }
@@ -1598,7 +1597,7 @@ input:focus-visible {
   border-radius: 50%;
   border: 1px solid rgba(30, 58, 47, 0.28);
   box-shadow:
-    inset 0 0 0 12px rgba(231, 249, 173, 0.16),
+    inset 0 0 0 12px rgba(255, 255, 255, 0.42),
     inset 0 0 0 22px rgba(30, 58, 47, 0.06);
 }
 
@@ -1808,7 +1807,7 @@ input:focus-visible {
   border: 0;
   border-radius: 28px;
   background:
-    radial-gradient(circle at 50% 35%, rgba(231, 249, 173, 0.42), transparent 48%),
+    radial-gradient(circle at 50% 35%, rgba(30, 58, 47, 0.08), transparent 48%),
     rgba(255, 255, 255, 0.5);
   box-shadow: var(--glass-shadow), var(--glass-inner);
   display: grid;
@@ -1934,9 +1933,9 @@ input:focus-visible {
 }
 
 .badge-filter-bar button.active {
-  background: rgba(231, 249, 173, 0.58);
+  background: var(--ink);
   border-color: rgba(30, 58, 47, 0.18);
-  color: var(--ink);
+  color: #ffffff;
 }
 
 .badge-grid-single .badge-tile {
