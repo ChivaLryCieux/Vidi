@@ -87,9 +87,12 @@ type StoredBadge = BadgeData & {
   avgApex?: number;
   peakHr?: number;
   sessionId?: string;
+  visualTone?: string;
+  visualElement?: string;
 };
 
 const badgeStorageKey = "vidi.badges";
+const featuredBadgeStorageKey = "vidi.featuredBadges";
 const badgeStorageSoftLimit = 100;
 const badgeStorageMinimum = 20;
 type MintMode = "normal" | "hidden" | "hiddenBlack";
@@ -109,6 +112,40 @@ const navItems = [
 ] as const;
 
 type ViewId = (typeof navItems)[number]["id"];
+type CollectionFilter = "all" | "warm" | "cool" | "mono" | "standard" | "iridescent" | "obsidian";
+type MintStep = "session" | "data" | "visual" | "preview";
+type VisualTone = "classic" | "clay" | "electric";
+type VisualElement = "court" | "racket" | "ball" | "numbers";
+
+const collectionFilters: { id: CollectionFilter; label: string }[] = [
+  { id: "all", label: "全部" },
+  { id: "warm", label: "暖色" },
+  { id: "cool", label: "冷色" },
+  { id: "mono", label: "黑白" },
+  { id: "standard", label: "标准" },
+  { id: "iridescent", label: "炫彩" },
+  { id: "obsidian", label: "黑曜" },
+];
+
+const mintSteps: { id: MintStep; label: string }[] = [
+  { id: "session", label: "训练" },
+  { id: "data", label: "数据" },
+  { id: "visual", label: "元素" },
+  { id: "preview", label: "预览" },
+];
+
+const visualTones: { id: VisualTone; label: string; desc: string }[] = [
+  { id: "classic", label: "经典绿", desc: "稳定、清晰、训练身份" },
+  { id: "clay", label: "红土", desc: "力量、摩擦、爆发感" },
+  { id: "electric", label: "电光", desc: "速度、反应、竞技性" },
+];
+
+const visualElements: { id: VisualElement; label: string; desc: string }[] = [
+  { id: "court", label: "球场线", desc: "把落点和空间秩序叠进徽章" },
+  { id: "racket", label: "球拍弧", desc: "强调挥拍路径与节奏" },
+  { id: "ball", label: "网球粒子", desc: "表现旋转、击球和轨迹" },
+  { id: "numbers", label: "数字刻度", desc: "保留训练数据的可读痕迹" },
+];
 
 const overviewSubTabs = [
   { id: "overview", label: "总览", icon: Grid2X2 },
@@ -633,6 +670,9 @@ function MintView({
   const [selectedIdx, setSelectedIdx] = React.useState(metrics.length - 1);
   const [candidates, setCandidates] = React.useState<StoredBadge[]>([]);
   const [selectedCandidateIdx, setSelectedCandidateIdx] = React.useState<number>(0);
+  const [mintStep, setMintStep] = React.useState<MintStep>("session");
+  const [visualTone, setVisualTone] = React.useState<VisualTone>("classic");
+  const [visualElement, setVisualElement] = React.useState<VisualElement>("court");
   const [generating, setGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -648,27 +688,56 @@ function MintView({
     avgApex: 1.8,
     peakHr: currentSession.maxHr,
   } : { timestamp: "", durationMin: 60, totalShots: 1200, avgSpeed: 65, avgApex: 1.8, peakHr: 155 };
+  const [mintForm, setMintForm] = React.useState(defaults);
+  const currentStepIndex = mintSteps.findIndex((step) => step.id === mintStep);
+  const selectedTone = visualTones.find((tone) => tone.id === visualTone) ?? visualTones[0];
+  const selectedElement = visualElements.find((element) => element.id === visualElement) ?? visualElements[0];
+  const selectedCandidate = candidates[selectedCandidateIdx];
+  const dataSignals = [
+    { label: "训练时长", value: `${mintForm.durationMin} 分钟`, effect: "决定螺旋延展长度" },
+    { label: "总拍数", value: `${mintForm.totalShots} 拍`, effect: "影响条带密度" },
+    { label: "拍速均值", value: `${mintForm.avgSpeed} km/h`, effect: "推动旋转张力" },
+    { label: "轨迹顶点", value: `${mintForm.avgApex} m`, effect: "改变空间起伏" },
+    { label: "心率峰值", value: `${mintForm.peakHr} bpm`, effect: "控制高光强度" },
+  ];
+
+  React.useEffect(() => {
+    setMintForm(defaults);
+    setCandidates([]);
+    setSelectedCandidateIdx(0);
+    setMintStep("session");
+    setSaveError(null);
+    setError(null);
+  }, [selectedIdx]);
+
+  function updateMintForm<K extends keyof typeof mintForm>(key: K, value: (typeof mintForm)[K]) {
+    setMintForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function goToMintStep(step: MintStep) {
+    setMintStep(step);
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
     setGenerating(true);
     setError(null);
     setSaveError(null);
     try {
       const mintedAt = Date.now();
-      const durationMin = Number(form.get("durationMin"));
-      const totalShots = Number(form.get("totalShots"));
-      const avgSpeed = Number(form.get("avgSpeed"));
-      const avgApex = Number(form.get("avgApex"));
-      const peakHr = Number(form.get("peakHr"));
-      const formTimestamp = form.get("timestamp") as string;
+      const durationMin = Number(mintForm.durationMin);
+      const totalShots = Number(mintForm.totalShots);
+      const avgSpeed = Number(mintForm.avgSpeed);
+      const avgApex = Number(mintForm.avgApex);
+      const peakHr = Number(mintForm.peakHr);
+      const formTimestamp = mintForm.timestamp;
       const trainingTime = formTimestamp ? new Date(formTimestamp).getTime() : mintedAt;
+      const visualParams = { visualTone, visualElement };
 
       const [normalData, hiddenData, hiddenBlackData] = await Promise.all([
-        invoke<BadgeData>("gen_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr }),
-        invoke<BadgeData>("gen_hidden_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr }),
-        invoke<BadgeData>("gen_hidden_black_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr })
+        invoke<BadgeData>("gen_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr, ...visualParams }),
+        invoke<BadgeData>("gen_hidden_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr, ...visualParams }),
+        invoke<BadgeData>("gen_hidden_black_badge", { timestamp: trainingTime, durationMin, totalShots, avgSpeed, avgApex, peakHr, ...visualParams })
       ]);
 
       const items: StoredBadge[] = [
@@ -681,7 +750,9 @@ function MintView({
           avgSpeed,
           avgApex,
           peakHr,
-          sessionId: currentSession.id
+          sessionId: currentSession.id,
+          visualTone,
+          visualElement
         },
         {
           ...hiddenData,
@@ -692,7 +763,9 @@ function MintView({
           avgSpeed,
           avgApex,
           peakHr,
-          sessionId: currentSession.id
+          sessionId: currentSession.id,
+          visualTone,
+          visualElement
         },
         {
           ...hiddenBlackData,
@@ -703,12 +776,15 @@ function MintView({
           avgSpeed,
           avgApex,
           peakHr,
-          sessionId: currentSession.id
+          sessionId: currentSession.id,
+          visualTone,
+          visualElement
         }
       ];
 
       setCandidates(items);
       setSelectedCandidateIdx(0);
+      setMintStep("preview");
     } catch (err) {
       setError(`铸造失败: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -727,6 +803,190 @@ function MintView({
       setSaveError(`保存失败：${err instanceof Error ? err.message : String(err)}`);
     }
   }
+
+  return (
+    <div className="mint-story">
+      <div className="mint-progress" aria-label="铸造步骤">
+        {mintSteps.map((step, index) => (
+          <button
+            key={step.id}
+            className={mintStep === step.id ? "active" : index < currentStepIndex ? "done" : ""}
+            onClick={() => goToMintStep(step.id)}
+            type="button"
+          >
+            <span>{index + 1}</span>
+            <strong>{step.label}</strong>
+          </button>
+        ))}
+      </div>
+
+      <form className="mint-story-card" onSubmit={handleSubmit}>
+        {mintStep === "session" && (
+          <section className="mint-page">
+            <div className="mint-page-copy">
+              <span>Step 01</span>
+              <h2>选择一次真实训练</h2>
+              <p>徽章从训练记录开始。每一次时长、拍数、速度和心率，都会成为螺旋结构中的一部分。</p>
+            </div>
+            <div className="session-rail mint-session-rail" aria-label="数据源选择">
+              {metrics.map((metric, index) => (
+                <button key={metric.id} className={index === selectedIdx ? "active" : ""} onClick={() => setSelectedIdx(index)} type="button">
+                  <span>{metric.label}</span>
+                  <small>{cnDate(metric.date)}</small>
+                </button>
+              ))}
+            </div>
+            <div className="mint-story-actions">
+              <button type="button" onClick={() => setMintStep("data")}>下一步</button>
+            </div>
+          </section>
+        )}
+
+        {mintStep === "data" && (
+          <section className="mint-page">
+            <div className="mint-page-copy">
+              <span>Step 02</span>
+              <h2>数据开始变成图形</h2>
+              <p>你可以微调本次训练数据。系统会把数值映射为螺旋密度、延展、起伏和高光。</p>
+            </div>
+            <div className="mint-signal-grid">
+              {dataSignals.map((signal) => (
+                <div key={signal.label} className="mint-signal">
+                  <label>{signal.label}</label>
+                  <strong>{signal.value}</strong>
+                  <span>{signal.effect}</span>
+                </div>
+              ))}
+            </div>
+            <div className="data-form mint-data-form">
+              <label>
+                训练时间
+                <input type="datetime-local" value={mintForm.timestamp} onChange={(event) => updateMintForm("timestamp", event.target.value)} required />
+              </label>
+              <label>
+                训练时长
+                <input type="number" min="1" step="1" value={mintForm.durationMin} onChange={(event) => updateMintForm("durationMin", Number(event.target.value))} required />
+              </label>
+              <label>
+                总拍数
+                <input type="number" min="1" step="1" value={mintForm.totalShots} onChange={(event) => updateMintForm("totalShots", Number(event.target.value))} required />
+              </label>
+              <label>
+                拍速均值
+                <input type="number" min="1" step="0.1" value={mintForm.avgSpeed} onChange={(event) => updateMintForm("avgSpeed", Number(event.target.value))} required />
+              </label>
+              <label>
+                轨迹顶点
+                <input type="number" min="0.1" max="5" step="0.01" value={mintForm.avgApex} onChange={(event) => updateMintForm("avgApex", Number(event.target.value))} required />
+              </label>
+              <label>
+                心率峰值
+                <input type="number" min="60" max="220" step="1" value={mintForm.peakHr} onChange={(event) => updateMintForm("peakHr", Number(event.target.value))} required />
+              </label>
+            </div>
+            <div className="mint-story-actions">
+              <button type="button" className="secondary" onClick={() => setMintStep("session")}>返回</button>
+              <button type="button" onClick={() => setMintStep("visual")}>下一步</button>
+            </div>
+          </section>
+        )}
+
+        {mintStep === "visual" && (
+          <section className="mint-page">
+            <div className="mint-page-copy">
+              <span>Step 03</span>
+              <h2>选择视觉语言</h2>
+              <p>选择颜色倾向和叠加元素。系统会把它们写入生成算法，形成不同的配色、几何图层和训练指纹。</p>
+            </div>
+            <div className="mint-choice-group">
+              <label>色彩气质</label>
+              <div className="mint-choice-grid">
+                {visualTones.map((tone) => (
+                  <button key={tone.id} type="button" className={visualTone === tone.id ? "active" : ""} onClick={() => setVisualTone(tone.id)}>
+                    <strong>{tone.label}</strong>
+                    <span>{tone.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mint-choice-group">
+              <label>叠加元素</label>
+              <div className="mint-choice-grid">
+                {visualElements.map((element) => (
+                  <button key={element.id} type="button" className={visualElement === element.id ? "active" : ""} onClick={() => setVisualElement(element.id)}>
+                    <strong>{element.label}</strong>
+                    <span>{element.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {error && <p className="mint-error">{error}</p>}
+            <div className="mint-story-actions">
+              <button type="button" className="secondary" onClick={() => setMintStep("data")}>返回</button>
+              <button type="submit" disabled={generating}>{generating ? "生成中..." : "生成徽章"}</button>
+            </div>
+          </section>
+        )}
+
+        {mintStep === "preview" && (
+          <section className="mint-page">
+            <div className="mint-page-copy">
+              <span>Step 04</span>
+              <h2>选择并保存作品</h2>
+              <p>本次训练已经生成三种候选徽章。选择最能代表你这次状态的一枚，保存到个人画廊。</p>
+            </div>
+            <div className="mint-summary">
+              <span>{selectedTone.label}</span>
+              <span>{selectedElement.label}</span>
+              <span>{currentSession.label}</span>
+            </div>
+            {candidates.length ? (
+              <>
+                <div className="candidate-list mint-candidate-list">
+                  {candidates.map((cand, idx) => {
+                    const isSelected = idx === selectedCandidateIdx;
+                    return (
+                      <button
+                        key={cand.id}
+                        type="button"
+                        className={`candidate-option${isSelected ? " active" : ""}`}
+                        aria-pressed={isSelected}
+                        onClick={() => setSelectedCandidateIdx(idx)}
+                      >
+                        <div className="candidate-preview">
+                          <BadgeMark badge={cand} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedCandidate && (
+                  <div className="mint-selected-caption">
+                    <strong>{badgeTitle(selectedCandidate)}</strong>
+                    <span>{selectedCandidate.totalShots} 拍 / {selectedCandidate.avgSpeed} km/h / {selectedCandidate.peakHr} bpm</span>
+                  </div>
+                )}
+                {saveError && <p className="badge-save-error">{saveError}</p>}
+              </>
+            ) : (
+              <div className="mint-empty-preview">
+                <Sparkles size={24} />
+                <span>还没有生成徽章</span>
+              </div>
+            )}
+            <div className="mint-story-actions">
+              <button type="button" className="secondary" onClick={() => setMintStep("visual")}>返回</button>
+              {candidates.length ? (
+                <button type="button" onClick={handleSaveSelected}>保存至个人画廊</button>
+              ) : (
+                <button type="submit" disabled={generating}>{generating ? "生成中..." : "生成徽章"}</button>
+              )}
+            </div>
+          </section>
+        )}
+      </form>
+    </div>
+  );
 
   return (
     <div className="grid-view">
@@ -1080,12 +1340,53 @@ function MineView({
   metrics: SessionMetric[];
 }) {
   const [mineTab, setMineTab] = React.useState<"collection" | "community">("collection");
+  const [collectionFilter, setCollectionFilter] = React.useState<CollectionFilter>("all");
+  const [featuredBadgeIds, setFeaturedBadgeIds] = React.useState<string[]>(() => readFeaturedBadgeIds());
+  const [heroIndex, setHeroIndex] = React.useState(0);
   const [selectedBadge, setSelectedBadge] = React.useState<StoredBadge | CommunityBadge | null>(null);
   const [toast, setToast] = React.useState<string | null>(null);
+  const visibleBadges = React.useMemo(
+    () => badges.filter((badge) => matchesCollectionFilter(badge, collectionFilter)),
+    [badges, collectionFilter],
+  );
+  const featuredOwnBadges = React.useMemo(
+    () => badges.filter((badge) => featuredBadgeIds.includes(badge.id)),
+    [badges, featuredBadgeIds],
+  );
+  const heroItems = badges.length
+    ? (featuredOwnBadges.length ? featuredOwnBadges : badges.slice(0, Math.min(3, badges.length)))
+    : communityBadges.slice(0, 5);
+  const heroBadge = heroItems[heroIndex % Math.max(heroItems.length, 1)];
+  const usingCommunityHero = !badges.length;
+  const usingDefaultHero = !!badges.length && !featuredOwnBadges.length;
+
+  React.useEffect(() => {
+    setHeroIndex(0);
+  }, [heroItems.length]);
+
+  React.useEffect(() => {
+    if (heroItems.length <= 1) return;
+    const id = window.setInterval(() => {
+      setHeroIndex((index) => (index + 1) % heroItems.length);
+    }, 4200);
+    return () => window.clearInterval(id);
+  }, [heroItems.length]);
 
   function handleClear() {
     localStorage.removeItem(badgeStorageKey);
+    localStorage.removeItem(featuredBadgeStorageKey);
+    setFeaturedBadgeIds([]);
     setBadges([]);
+  }
+
+  function toggleFeaturedBadge(badgeId: string) {
+    setFeaturedBadgeIds((current) => {
+      const next = current.includes(badgeId)
+        ? current.filter((id) => id !== badgeId)
+        : [...current, badgeId];
+      localStorage.setItem(featuredBadgeStorageKey, JSON.stringify(next));
+      return next;
+    });
   }
 
   function handleSave() {
@@ -1158,6 +1459,37 @@ function MineView({
 
   return (
     <div className="mine-view" style={{ padding: "0 4px" }}>
+      {heroBadge && (
+        <section className="badge-hero" aria-label="主页徽章视觉中心">
+          <button className="badge-hero-stage" onClick={() => setSelectedBadge(heroBadge)} type="button">
+            <div className="badge-hero-art">
+              {"isCommunity" in heroBadge ? (
+                <img src={new URL(`./Pics/${heroBadge.imageName}`, import.meta.url).href} alt={heroBadge.name} />
+              ) : (
+                <BadgeMark badge={heroBadge} />
+              )}
+            </div>
+            <div className="badge-hero-copy">
+              <span>{usingCommunityHero ? "社区灵感" : usingDefaultHero ? "最近收藏" : "首页轮播"}</span>
+              <strong>{"isCommunity" in heroBadge ? heroBadge.name : badgeTitle(heroBadge)}</strong>
+            </div>
+          </button>
+          {heroItems.length > 1 && (
+            <div className="badge-hero-dots" aria-label="轮播进度">
+              {heroItems.map((item, index) => (
+                <button
+                  key={item.id}
+                  className={index === heroIndex % heroItems.length ? "active" : ""}
+                  onClick={() => setHeroIndex(index)}
+                  type="button"
+                  aria-label={`显示第 ${index + 1} 枚徽章`}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       <div className="sub-tabs" aria-label="我的子导航" style={{ marginBottom: 20 }}>
         <button
           className={mineTab === "collection" ? "active" : ""}
@@ -1178,17 +1510,42 @@ function MineView({
       {mineTab === "collection" ? (
         badges.length ? (
           <>
+            <div className="badge-filter-bar" aria-label="徽章分类">
+              {collectionFilters.map((filter) => (
+                <button
+                  key={filter.id}
+                  className={collectionFilter === filter.id ? "active" : ""}
+                  onClick={() => setCollectionFilter(filter.id)}
+                  type="button"
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
             <div className="badge-grid-single" aria-label="本地生成徽章">
-              {badges.map((badge) => (
+              {visibleBadges.map((badge) => (
                 <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
                   <BadgeMark badge={badge} />
                   <figcaption>
                     <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
                     <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
                   </figcaption>
+                  <button
+                    className={`badge-feature-toggle${featuredBadgeIds.includes(badge.id) ? " active" : ""}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleFeaturedBadge(badge.id);
+                    }}
+                    type="button"
+                  >
+                    {featuredBadgeIds.includes(badge.id) ? "首页轮播中" : "加入首页轮播"}
+                  </button>
                 </figure>
               ))}
             </div>
+            {!visibleBadges.length && (
+              <p className="muted" style={{ textAlign: "center", marginTop: 32 }}>当前分类下还没有徽章。</p>
+            )}
             <div style={{ marginTop: 32, display: "flex", justifyContent: "center" }}>
               <button className="data-form button secondary" style={{ minHeight: 24, borderRadius: 12, padding: "0 24px", fontSize: 14, fontWeight: "bold" }} onClick={handleClear}>
                 清除历史记录
@@ -1220,15 +1577,7 @@ function MineView({
             <button className="badge-modal-close" onClick={() => setSelectedBadge(null)} type="button">
               <X size={16} />
             </button>
-            <div className="badge-modal-artwork">
-              {commBadge ? (
-                <div className="badge-community-img-wrap-large">
-                  <img src={new URL(`./Pics/${commBadge.imageName}`, import.meta.url).href} alt={commBadge.name} />
-                </div>
-              ) : (
-                storeBadge && <BadgeMark badge={storeBadge} />
-              )}
-            </div>
+            <BadgeCoin badge={selectedBadge} />
             <div className="badge-modal-title">
               <h3>{commBadge ? commBadge.name : storeBadge && badgeTitle(storeBadge)}</h3>
               <span>{commBadge ? `由 ${commBadge.creator} 创作的社区创意徽章` : "已铸造为独一无二 of 数字化训练徽章"}</span>
@@ -1329,6 +1678,112 @@ function badgeTitle(badge: StoredBadge) {
   if (badge.curveType === "parametric3d") return "Standard Vector Flow Field";
   if (badge.curveType === "2d") return "Gosper 2D";
   return "Z-Order 3D";
+}
+
+function matchesCollectionFilter(badge: StoredBadge, filter: CollectionFilter) {
+  if (filter === "all") return true;
+  if (filter === "warm" || filter === "cool" || filter === "mono") {
+    return badgeColorFamily(badge) === filter;
+  }
+  return badgeStyleFamily(badge) === filter;
+}
+
+function badgeStyleFamily(badge: StoredBadge): Extract<CollectionFilter, "standard" | "iridescent" | "obsidian"> {
+  if (badge.curveType === "ringsBlack" || badge.id.includes("hiddenBlack")) return "obsidian";
+  if (badge.curveType === "rings" || badge.id.includes("hidden")) return "iridescent";
+  return "standard";
+}
+
+function badgeColorFamily(badge: StoredBadge): Extract<CollectionFilter, "warm" | "cool" | "mono"> {
+  const color = badge.colorStart.trim();
+  const hslMatch = color.match(/hsl\(([-\d.]+),\s*([-\d.]+)%/i);
+  if (badge.curveType === "ringsBlack" || badge.id.includes("hiddenBlack")) return "mono";
+  if (!hslMatch) {
+    return color.includes("0, 0") || color.includes("255,255,255") ? "mono" : "cool";
+  }
+
+  const hue = ((Number(hslMatch[1]) % 360) + 360) % 360;
+  const saturation = Number(hslMatch[2]);
+  if (saturation < 12) return "mono";
+  return hue < 70 || hue >= 300 ? "warm" : "cool";
+}
+
+function BadgeCoin({ badge }: { badge: StoredBadge | CommunityBadge }) {
+  const [rotation, setRotation] = React.useState({ x: -8, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const dragRef = React.useRef({ active: false, x: 0, y: 0, startX: -8, startY: 0 });
+  const isCommunity = "isCommunity" in badge && badge.isCommunity;
+  const title = isCommunity ? badge.name : badgeTitle(badge as StoredBadge);
+  const subtitle = isCommunity ? (badge as CommunityBadge).creator : "Vidi Training NFT";
+  const coinStyle = {
+    "--coin-rx": `${rotation.x}deg`,
+    "--coin-ry": `${rotation.y}deg`,
+  } as React.CSSProperties;
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    dragRef.current = {
+      active: true,
+      x: event.clientX,
+      y: event.clientY,
+      startX: rotation.x,
+      startY: rotation.y,
+    };
+    setDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current.active) return;
+    const dx = event.clientX - dragRef.current.x;
+    const dy = event.clientY - dragRef.current.y;
+    setRotation({
+      x: Math.max(-58, Math.min(58, dragRef.current.startX - dy * 0.42)),
+      y: dragRef.current.startY + dx * 0.62,
+    });
+  }
+
+  function handlePointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    dragRef.current.active = false;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  return (
+    <div
+      className={`badge-coin${dragging ? " dragging" : ""}`}
+      style={coinStyle}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      role="img"
+      aria-label={`${title} 双面纪念币`}
+    >
+      <div className="badge-coin-object">
+        <div className="badge-coin-face badge-coin-front">
+          <div className="badge-coin-face-glow" />
+          <div className="badge-coin-art">
+            {isCommunity ? (
+              <img src={new URL(`./Pics/${(badge as CommunityBadge).imageName}`, import.meta.url).href} alt={title} />
+            ) : (
+              <BadgeMark badge={badge as StoredBadge} />
+            )}
+          </div>
+        </div>
+        <div className="badge-coin-face badge-coin-back">
+          <div className="badge-coin-back-ring" />
+          <div className="badge-coin-back-copy">
+            <span>VIDI NFT</span>
+            <strong>{title}</strong>
+            <small>{subtitle}</small>
+            <small>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</small>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -1698,6 +2153,15 @@ function readBadges(): StoredBadge[] {
       return [];
     }
     return stored.filter(isStoredBadge);
+  } catch {
+    return [];
+  }
+}
+
+function readFeaturedBadgeIds(): string[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(featuredBadgeStorageKey) || "[]") as unknown;
+    return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : [];
   } catch {
     return [];
   }

@@ -271,6 +271,295 @@ fn shade_hsl(h: f64, s: f64, l: f64, shade: f64, specular: f64) -> String {
     )
 }
 
+fn palette_for(theme: &str, visual_tone: &str) -> Vec<(f64, f64, f64)> {
+    if theme == "black" {
+        return vec![
+            (0.0, 0.0, 20.0),
+            (0.0, 0.0, 45.0),
+            (0.0, 0.0, 65.0),
+            (0.0, 0.0, 80.0),
+            (0.0, 0.0, 92.0),
+            (0.0, 0.0, 12.0),
+        ];
+    }
+
+    match (theme, visual_tone) {
+        ("hidden", "clay") => vec![
+            (16.0, 92.0, 74.0),
+            (34.0, 90.0, 78.0),
+            (356.0, 88.0, 76.0),
+            (52.0, 86.0, 74.0),
+            (205.0, 80.0, 78.0),
+            (150.0, 75.0, 76.0),
+        ],
+        ("hidden", "electric") => vec![
+            (188.0, 95.0, 78.0),
+            (218.0, 95.0, 76.0),
+            (278.0, 92.0, 82.0),
+            (318.0, 92.0, 78.0),
+            (154.0, 86.0, 76.0),
+            (48.0, 88.0, 76.0),
+        ],
+        ("hidden", _) => vec![
+            (270.0, 92.0, 80.0),
+            (345.0, 95.0, 80.0),
+            (42.0, 92.0, 76.0),
+            (150.0, 85.0, 78.0),
+            (205.0, 95.0, 78.0),
+            (168.0, 90.0, 76.0),
+        ],
+        (_, "clay") => vec![
+            (16.0, 94.0, 54.0),
+            (34.0, 90.0, 58.0),
+            (356.0, 78.0, 62.0),
+            (48.0, 88.0, 56.0),
+            (150.0, 70.0, 48.0),
+            (210.0, 24.0, 14.0),
+        ],
+        (_, "electric") => vec![
+            (188.0, 100.0, 54.0),
+            (218.0, 100.0, 58.0),
+            (278.0, 92.0, 66.0),
+            (318.0, 96.0, 68.0),
+            (154.0, 92.0, 48.0),
+            (220.0, 34.0, 12.0),
+        ],
+        _ => vec![
+            (190.0, 100.0, 50.0),
+            (50.0, 100.0, 50.0),
+            (335.0, 100.0, 68.0),
+            (165.0, 100.0, 45.0),
+            (210.0, 100.0, 55.0),
+            (210.0, 30.0, 12.0),
+        ],
+    }
+}
+
+fn overlay_color(
+    theme: &str,
+    palette: &[(f64, f64, f64)],
+    index: usize,
+    light_boost: f64,
+) -> String {
+    let base = palette[index % palette.len()];
+    if theme == "black" {
+        shade_hsl(
+            base.0,
+            base.1,
+            (base.2 + light_boost).clamp(10.0, 94.0),
+            1.0,
+            0.0,
+        )
+    } else {
+        shade_hsl(
+            (base.0 + index as f64 * 12.0).rem_euclid(360.0),
+            base.1,
+            (base.2 + light_boost).clamp(20.0, 92.0),
+            1.0,
+            0.2,
+        )
+    }
+}
+
+fn segment_panel(
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    width: f64,
+    color: String,
+    opacity: f64,
+) -> RingPanel {
+    let dx = x1 - x0;
+    let dy = y1 - y0;
+    let len = (dx * dx + dy * dy).sqrt().max(1e-6);
+    let px = -dy / len * width * 0.5;
+    let py = dx / len * width * 0.5;
+    RingPanel {
+        points: [
+            [x0 + px, y0 + py],
+            [x1 + px, y1 + py],
+            [x1 - px, y1 - py],
+            [x0 - px, y0 - py],
+        ],
+        color,
+        opacity,
+        front: true,
+    }
+}
+
+fn push_overlay_panel(sorted: &mut Vec<SortedPanel>, panel: RingPanel, z_depth: f64) {
+    sorted.push(SortedPanel {
+        panel,
+        z_depth,
+        strand_index: None,
+    });
+}
+
+fn add_visual_element_panels(
+    sorted: &mut Vec<SortedPanel>,
+    visual_element: &str,
+    theme: &str,
+    palette: &[(f64, f64, f64)],
+    digest: &[u8; 32],
+    shots_fac: f64,
+    speed_fac: f64,
+    hr_fac: f64,
+) {
+    match visual_element {
+        "racket" => add_racket_overlays(sorted, theme, palette, digest, shots_fac, speed_fac),
+        "ball" => add_ball_overlays(sorted, theme, palette, digest, shots_fac, hr_fac),
+        "numbers" => add_number_overlays(sorted, theme, palette, digest, shots_fac, speed_fac),
+        _ => add_court_overlays(sorted, theme, palette, digest, shots_fac),
+    }
+}
+
+fn add_court_overlays(
+    sorted: &mut Vec<SortedPanel>,
+    theme: &str,
+    palette: &[(f64, f64, f64)],
+    digest: &[u8; 32],
+    shots_fac: f64,
+) {
+    let color = overlay_color(theme, palette, 1, 18.0);
+    let opacity = 0.16 + shots_fac * 0.12;
+    let width = 0.005 + shots_fac * 0.004;
+    let x0 = 0.18 + digest_unit(digest, 80) * 0.04;
+    let x1 = 0.82 - digest_unit(digest, 81) * 0.04;
+    let y0 = 0.22 + digest_unit(digest, 82) * 0.04;
+    let y1 = 0.78 - digest_unit(digest, 83) * 0.04;
+    let mid_x = 0.5 + (digest_unit(digest, 84) - 0.5) * 0.05;
+    let mid_y = 0.5 + (digest_unit(digest, 85) - 0.5) * 0.05;
+    let lines = [
+        (x0, y0, x1, y0),
+        (x1, y0, x1, y1),
+        (x1, y1, x0, y1),
+        (x0, y1, x0, y0),
+        (mid_x, y0, mid_x, y1),
+        (x0, mid_y, x1, mid_y),
+        (x0, y0 + (y1 - y0) * 0.25, x1, y0 + (y1 - y0) * 0.25),
+        (x0, y1 - (y1 - y0) * 0.25, x1, y1 - (y1 - y0) * 0.25),
+    ];
+    for (index, (ax, ay, bx, by)) in lines.into_iter().enumerate() {
+        push_overlay_panel(
+            sorted,
+            segment_panel(
+                ax,
+                ay,
+                bx,
+                by,
+                width,
+                color.clone(),
+                opacity * if index < 4 { 1.0 } else { 0.72 },
+            ),
+            1.2 + index as f64 * 0.001,
+        );
+    }
+}
+
+fn add_racket_overlays(
+    sorted: &mut Vec<SortedPanel>,
+    theme: &str,
+    palette: &[(f64, f64, f64)],
+    digest: &[u8; 32],
+    shots_fac: f64,
+    speed_fac: f64,
+) {
+    let color = overlay_color(theme, palette, 2, 16.0);
+    let opacity = 0.18 + speed_fac * 0.16;
+    let width = 0.006 + shots_fac * 0.004;
+    let cx = 0.5 + (digest_unit(digest, 86) - 0.5) * 0.06;
+    let cy = 0.52 + (digest_unit(digest, 87) - 0.5) * 0.06;
+    let rx = 0.31 + speed_fac * 0.05;
+    let ry = 0.19 + shots_fac * 0.04;
+    let start = -0.86 * std::f64::consts::PI;
+    let end = 0.18 * std::f64::consts::PI;
+    let segments = 26;
+    for i in 0..segments {
+        let t0 = start + (end - start) * i as f64 / segments as f64;
+        let t1 = start + (end - start) * (i + 1) as f64 / segments as f64;
+        let p0 = (cx + rx * t0.cos(), cy + ry * t0.sin());
+        let p1 = (cx + rx * t1.cos(), cy + ry * t1.sin());
+        push_overlay_panel(
+            sorted,
+            segment_panel(p0.0, p0.1, p1.0, p1.1, width, color.clone(), opacity),
+            1.28 + i as f64 * 0.001,
+        );
+    }
+    push_overlay_panel(
+        sorted,
+        segment_panel(
+            cx + rx * 0.5,
+            cy + ry * 0.72,
+            0.82,
+            0.84,
+            width * 1.45,
+            color,
+            opacity * 0.82,
+        ),
+        1.34,
+    );
+}
+
+fn add_ball_overlays(
+    sorted: &mut Vec<SortedPanel>,
+    theme: &str,
+    palette: &[(f64, f64, f64)],
+    digest: &[u8; 32],
+    shots_fac: f64,
+    hr_fac: f64,
+) {
+    let count = 14 + (shots_fac * 14.0).round() as usize;
+    let opacity = 0.18 + hr_fac * 0.16;
+    for i in 0..count {
+        let t = i as f64 / count as f64;
+        let angle = t * TAU * (1.45 + digest_unit(digest, 88) * 0.55);
+        let radius = 0.1 + 0.35 * t;
+        let jitter = (digest_unit(digest, 89 + i) - 0.5) * 0.045;
+        let x = 0.5 + (radius + jitter) * angle.cos();
+        let y = 0.5 + (radius + jitter) * angle.sin();
+        let s = 0.012 + digest_unit(digest, 104 + i) * 0.014 + shots_fac * 0.006;
+        let color = overlay_color(theme, palette, i, 20.0);
+        push_overlay_panel(
+            sorted,
+            RingPanel {
+                points: [[x, y - s], [x + s, y], [x, y + s], [x - s, y]],
+                color,
+                opacity,
+                front: true,
+            },
+            1.22 + i as f64 * 0.001,
+        );
+    }
+}
+
+fn add_number_overlays(
+    sorted: &mut Vec<SortedPanel>,
+    theme: &str,
+    palette: &[(f64, f64, f64)],
+    digest: &[u8; 32],
+    shots_fac: f64,
+    speed_fac: f64,
+) {
+    let color = overlay_color(theme, palette, 3, 18.0);
+    let count = 18 + (speed_fac * 12.0).round() as usize;
+    let opacity = 0.14 + shots_fac * 0.14;
+    for i in 0..count {
+        let angle = i as f64 / count as f64 * TAU + digest_unit(digest, 120) * 0.25;
+        let r0 = 0.32 + digest_unit(digest, 121 + i) * 0.04;
+        let r1 = r0 + 0.035 + (i % 4) as f64 * 0.006;
+        let x0 = 0.5 + r0 * angle.cos();
+        let y0 = 0.5 + r0 * angle.sin();
+        let x1 = 0.5 + r1 * angle.cos();
+        let y1 = 0.5 + r1 * angle.sin();
+        push_overlay_panel(
+            sorted,
+            segment_panel(x0, y0, x1, y1, 0.005, color.clone(), opacity),
+            1.18 + i as f64 * 0.001,
+        );
+    }
+}
+
 struct SortedPanel {
     panel: RingPanel,
     z_depth: f64,
@@ -320,12 +609,21 @@ pub fn generate_parametric_3d_badge(
     avg_apex: f64,
     peak_hr: f64,
     theme: &str,
+    visual_tone: &str,
+    visual_element: &str,
 ) -> BadgeData {
     // SHA-256 of all metrics → every badge is a cryptographic fingerprint
     let digest = sha256(
         format!(
-            "vidi-seam:{}:{}:{}:{}:{}:{}",
-            timestamp, duration_min, total_shots, avg_speed, avg_apex, peak_hr
+            "vidi-seam:{}:{}:{}:{}:{}:{}:{}:{}",
+            timestamp,
+            duration_min,
+            total_shots,
+            avg_speed,
+            avg_apex,
+            peak_hr,
+            visual_tone,
+            visual_element
         )
         .as_bytes(),
     );
@@ -357,33 +655,7 @@ pub fn generate_parametric_3d_badge(
         _ => 0.92,
     };
 
-    // Palette
-    let palette: Vec<(f64, f64, f64)> = match theme {
-        "black" => vec![
-            (0.0, 0.0, 20.0),
-            (0.0, 0.0, 45.0),
-            (0.0, 0.0, 65.0),
-            (0.0, 0.0, 80.0),
-            (0.0, 0.0, 92.0),
-            (0.0, 0.0, 12.0),
-        ],
-        "hidden" => vec![
-            (270.0, 92.0, 80.0),
-            (345.0, 95.0, 80.0),
-            (42.0, 92.0, 76.0),
-            (150.0, 85.0, 78.0),
-            (205.0, 95.0, 78.0),
-            (168.0, 90.0, 76.0),
-        ],
-        _ => vec![
-            (190.0, 100.0, 50.0),
-            (50.0, 100.0, 50.0),
-            (335.0, 100.0, 68.0),
-            (165.0, 100.0, 45.0),
-            (210.0, 100.0, 55.0),
-            (210.0, 30.0, 12.0),
-        ],
-    };
+    let palette = palette_for(theme, visual_tone);
 
     // ── Build strand recipes ──
     // Each strand is a parametric S-curve with its own amplitude, phase, radius, and width.
@@ -725,6 +997,18 @@ pub fn generate_parametric_3d_badge(
         }
     }
 
+    add_visual_element_panels(
+        &mut sorted,
+        visual_element,
+        theme,
+        &palette,
+        &digest,
+        shots_fac,
+        speed_fac,
+        hr_fac,
+    );
+    sorted.sort_by(|a, b| a.z_depth.partial_cmp(&b.z_depth).unwrap());
+
     let panels = compact_panel_geometry(sorted, recipes.len(), &digest, GENERATED_PANEL_BUDGET);
 
     let c0 = palette[0];
@@ -753,6 +1037,8 @@ pub fn generate_badge(
     avg_speed: f64,
     avg_apex: f64,
     peak_hr: f64,
+    visual_tone: &str,
+    visual_element: &str,
 ) -> BadgeData {
     generate_parametric_3d_badge(
         timestamp,
@@ -762,6 +1048,8 @@ pub fn generate_badge(
         avg_apex,
         peak_hr,
         "standard",
+        visual_tone,
+        visual_element,
     )
 }
 
@@ -772,6 +1060,8 @@ pub fn generate_hidden_badge(
     avg_speed: f64,
     avg_apex: f64,
     peak_hr: f64,
+    visual_tone: &str,
+    visual_element: &str,
 ) -> BadgeData {
     generate_parametric_3d_badge(
         timestamp,
@@ -781,6 +1071,8 @@ pub fn generate_hidden_badge(
         avg_apex,
         peak_hr,
         "hidden",
+        visual_tone,
+        visual_element,
     )
 }
 
@@ -791,6 +1083,8 @@ pub fn generate_hidden_black_badge(
     avg_speed: f64,
     avg_apex: f64,
     peak_hr: f64,
+    visual_tone: &str,
+    visual_element: &str,
 ) -> BadgeData {
     generate_parametric_3d_badge(
         timestamp,
@@ -800,5 +1094,7 @@ pub fn generate_hidden_black_badge(
         avg_apex,
         peak_hr,
         "black",
+        visual_tone,
+        visual_element,
     )
 }

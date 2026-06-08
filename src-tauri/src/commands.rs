@@ -39,6 +39,8 @@ pub fn gen_badge(
     avg_speed: f64,
     avg_apex: f64,
     peak_hr: f64,
+    visual_tone: String,
+    visual_element: String,
 ) -> BadgeData {
     generate_badge(
         timestamp,
@@ -47,6 +49,8 @@ pub fn gen_badge(
         avg_speed,
         avg_apex,
         peak_hr,
+        &visual_tone,
+        &visual_element,
     )
 }
 
@@ -58,6 +62,8 @@ pub fn gen_hidden_badge(
     avg_speed: f64,
     avg_apex: f64,
     peak_hr: f64,
+    visual_tone: String,
+    visual_element: String,
 ) -> BadgeData {
     generate_hidden_badge(
         timestamp,
@@ -66,6 +72,8 @@ pub fn gen_hidden_badge(
         avg_speed,
         avg_apex,
         peak_hr,
+        &visual_tone,
+        &visual_element,
     )
 }
 
@@ -77,6 +85,8 @@ pub fn gen_hidden_black_badge(
     avg_speed: f64,
     avg_apex: f64,
     peak_hr: f64,
+    visual_tone: String,
+    visual_element: String,
 ) -> BadgeData {
     generate_hidden_black_badge(
         timestamp,
@@ -85,5 +95,7 @@ pub fn gen_hidden_black_badge(
         avg_speed,
         avg_apex,
         peak_hr,
+        &visual_tone,
+        &visual_element,
     )
 }

@@ -914,6 +914,259 @@ h1 {
 
 /* ── Bottom nav ─────────────────────────────── */
 
+.mint-story {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.mint-progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mint-progress button {
+  min-width: 0;
+  min-height: 58px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(30, 58, 47, 0.08);
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  color: var(--muted);
+}
+
+.mint-progress button span {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(30, 58, 47, 0.08);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mint-progress button strong {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mint-progress button.active,
+.mint-progress button.done {
+  color: var(--ink);
+  background: rgba(231, 249, 173, 0.44);
+  border-color: rgba(30, 58, 47, 0.14);
+}
+
+.mint-story-card {
+  min-height: 560px;
+  border-radius: 28px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: var(--glass-shadow), var(--glass-inner);
+  border: 1px solid rgba(255, 255, 255, 0.48);
+}
+
+.mint-page {
+  min-height: 512px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: fadeIn 0.22s ease both;
+}
+
+.mint-page-copy span,
+.mint-choice-group > label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mint-page-copy h2 {
+  margin: 4px 0 6px;
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.12;
+}
+
+.mint-page-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.mint-session-rail {
+  margin: 0;
+}
+
+.mint-signal-grid,
+.mint-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mint-signal,
+.mint-choice-grid button {
+  min-height: 92px;
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(30, 58, 47, 0.08);
+  box-shadow: var(--glass-inner);
+}
+
+.mint-signal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mint-signal label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.mint-signal strong {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.mint-signal span,
+.mint-choice-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mint-data-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.mint-choice-group {
+  display: grid;
+  gap: 10px;
+}
+
+.mint-choice-grid button {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mint-choice-grid button.active {
+  background: rgba(231, 249, 173, 0.5);
+  border-color: rgba(30, 58, 47, 0.2);
+}
+
+.mint-choice-grid strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.mint-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mint-summary span {
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: rgba(231, 249, 173, 0.5);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.mint-candidate-list {
+  margin-bottom: 4px;
+}
+
+.mint-selected-caption {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.mint-selected-caption strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.mint-selected-caption span,
+.mint-empty-preview span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mint-empty-preview {
+  min-height: 220px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.42);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--ink);
+}
+
+.mint-error {
+  margin: 0;
+  color: #ef4444;
+  font-size: 13px;
+}
+
+.mint-story-actions {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mint-story-actions button {
+  min-height: 48px;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.mint-story-actions button.secondary {
+  background: rgba(255, 255, 255, 0.54);
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .mint-story-card {
+    padding: 18px;
+  }
+
+  .mint-progress {
+    gap: 6px;
+  }
+
+  .mint-progress button {
+    min-height: 50px;
+  }
+
+  .mint-signal-grid,
+  .mint-data-form,
+  .mint-choice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;
@@ -1226,14 +1479,167 @@ input:focus-visible {
 }
 
 .badge-modal-artwork {
-  width: 180px;
-  height: 180px;
+  width: 230px;
+  height: 230px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.35);
-  box-shadow: var(--glass-inner);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+}
+
+.badge-coin {
+  width: 232px;
+  height: 232px;
+  perspective: 980px;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.badge-coin.dragging {
+  cursor: grabbing;
+}
+
+.badge-coin-object {
+  width: 192px;
+  height: 192px;
+  position: relative;
+  transform-style: preserve-3d;
+  animation: badgeCoinSpin 8.5s linear infinite;
+}
+
+.badge-coin.dragging .badge-coin-object {
+  animation: none;
+  transform: rotateX(var(--coin-rx)) rotateY(var(--coin-ry));
+}
+
+.badge-coin-object::before {
+  content: "";
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 24deg, rgba(30, 58, 47, 0.95), rgba(231, 249, 173, 0.86), rgba(255, 255, 255, 0.62), rgba(30, 58, 47, 0.95)),
+    linear-gradient(90deg, rgba(30, 58, 47, 0.84), rgba(255, 255, 255, 0.18), rgba(30, 58, 47, 0.78));
+  box-shadow: 0 20px 44px rgba(30, 58, 47, 0.2);
+  transform: translateZ(-10px);
+}
+
+.badge-coin-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  backface-visibility: hidden;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.92), transparent 18%),
+    radial-gradient(circle at 68% 72%, rgba(231, 249, 173, 0.42), transparent 34%),
+    rgba(255, 255, 255, 0.82);
+  border: 8px solid rgba(30, 58, 47, 0.92);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.7),
+    inset 0 0 34px rgba(231, 249, 173, 0.34),
+    0 18px 42px rgba(0, 0, 0, 0.12);
+}
+
+.badge-coin-front {
+  transform: translateZ(11px);
+}
+
+.badge-coin-back {
+  transform: rotateY(180deg) translateZ(11px);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(231, 249, 173, 0.32), transparent 42%),
+    repeating-conic-gradient(from 0deg, rgba(30, 58, 47, 0.08) 0 8deg, transparent 8deg 18deg),
+    rgba(252, 249, 244, 0.95);
+}
+
+.badge-coin-face-glow {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background:
+    conic-gradient(from 140deg, rgba(52, 211, 153, 0.08), rgba(250, 204, 21, 0.32), rgba(56, 189, 248, 0.24), rgba(244, 114, 182, 0.22), rgba(52, 211, 153, 0.08));
+  filter: blur(7px) saturate(140%);
+  mix-blend-mode: screen;
+  animation: badgeCoinGlow 3.6s ease-in-out infinite alternate;
+}
+
+.badge-coin-art {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+}
+
+.badge-coin-art .badge-mark,
+.badge-coin-art img {
+  width: 100%;
+  height: 100%;
+}
+
+.badge-coin-art img {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.badge-coin-back-ring {
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(30, 58, 47, 0.28);
+  box-shadow:
+    inset 0 0 0 12px rgba(231, 249, 173, 0.16),
+    inset 0 0 0 22px rgba(30, 58, 47, 0.06);
+}
+
+.badge-coin-back-copy {
+  width: 132px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  text-align: center;
+  color: var(--ink);
+}
+
+.badge-coin-back-copy span {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.badge-coin-back-copy strong {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.16;
+}
+
+.badge-coin-back-copy small {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+@keyframes badgeCoinSpin {
+  from { transform: rotateX(-8deg) rotateY(0deg); }
+  to { transform: rotateX(-8deg) rotateY(360deg); }
+}
+
+@keyframes badgeCoinGlow {
+  from { opacity: 0.52; transform: rotate(0deg) scale(0.96); }
+  to { opacity: 0.95; transform: rotate(24deg) scale(1.04); }
 }
 
 .badge-modal-title {
@@ -1387,12 +1793,150 @@ input:focus-visible {
 }
 
 /* ── Badge Grid Layout Tweak ────────────────── */
+.badge-hero {
+  width: min(100%, 460px);
+  margin: 0 auto 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge-hero-stage {
+  width: 100%;
+  min-height: 300px;
+  border: 0;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(231, 249, 173, 0.42), transparent 48%),
+    rgba(255, 255, 255, 0.5);
+  box-shadow: var(--glass-shadow), var(--glass-inner);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+}
+
+.badge-hero-stage::after {
+  content: "";
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgba(30, 58, 47, 0.08);
+  border-radius: 22px;
+  pointer-events: none;
+}
+
+.badge-hero-art {
+  width: min(70vw, 230px);
+  height: min(70vw, 230px);
+  display: grid;
+  place-items: center;
+  animation: badgeHeroIn 0.48s var(--ease-out-expo) both;
+}
+
+.badge-hero-art .badge-mark,
+.badge-hero-art img {
+  width: 100%;
+  height: 100%;
+}
+
+.badge-hero-art img {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--ink);
+  box-shadow: var(--glass-shadow);
+}
+
+.badge-hero-copy {
+  width: calc(100% - 48px);
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.badge-hero-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badge-hero-copy strong {
+  max-width: 68%;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.badge-hero-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+}
+
+.badge-hero-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(30, 58, 47, 0.18);
+  transition: width 0.18s ease, background-color 0.18s ease;
+}
+
+.badge-hero-dots button.active {
+  width: 22px;
+  background: var(--ink);
+}
+
+@keyframes badgeHeroIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .badge-grid-single {
   display: flex;
   flex-direction: column;
   gap: 16px;
   max-width: 400px;
   margin: 0 auto;
+}
+
+.badge-filter-bar {
+  display: flex;
+  gap: 8px;
+  width: min(100%, 420px);
+  margin: 0 auto 16px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.badge-filter-bar button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(30, 58, 47, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.badge-filter-bar button.active {
+  background: rgba(231, 249, 173, 0.58);
+  border-color: rgba(30, 58, 47, 0.18);
+  color: var(--ink);
 }
 
 .badge-grid-single .badge-tile {
@@ -1417,6 +1961,22 @@ input:focus-visible {
 .badge-grid-single .badge-tile figcaption span {
   font-size: 13px;
   color: var(--muted);
+}
+
+.badge-feature-toggle {
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(30, 58, 47, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.badge-feature-toggle.active {
+  background: var(--ink);
+  color: #fff;
 }
 
 .badge-grid-double {
