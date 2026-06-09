@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { Activity, ArrowDownUp, CircleUserRound, Download, Dumbbell, Grid2X2, LineChart, Plus, Radar, Share2, Sparkles, Target, Trophy, X } from "lucide-react";
@@ -31,6 +32,16 @@ function useScrollReveal() {
     return () => observer.disconnect();
   });
   return ref;
+}
+
+function ModalPortal({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return mounted ? createPortal(children, document.body) : null;
 }
 
 type SessionMetric = {
@@ -89,6 +100,10 @@ type StoredBadge = BadgeData & {
   sessionId?: string;
   visualTone?: string;
   visualElement?: string;
+  communityImageName?: string;
+  communityName?: string;
+  communityCreator?: string;
+  communityComment?: string;
 };
 
 const badgeStorageKey = "vidi.badges";
@@ -135,7 +150,7 @@ const mintSteps: { id: MintStep; label: string }[] = [
 ];
 
 const visualTones: { id: VisualTone; label: string; desc: string }[] = [
-  { id: "classic", label: "经典绿", desc: "稳定、清晰、训练身份" },
+  { id: "classic", label: "网球绿", desc: "稳定、清晰、经典" },
   { id: "clay", label: "红土", desc: "力量、摩擦、爆发感" },
   { id: "electric", label: "电光", desc: "速度、反应、竞技性" },
 ];
@@ -375,6 +390,7 @@ function App() {
       </nav>
 
       {showAddDataModal && (
+        <ModalPortal>
         <div className="badge-modal-overlay" onClick={() => setShowAddDataModal(false)}>
           <div className="badge-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxHeight: "85vh", overflowY: "auto" }}>
             <button className="badge-modal-close" onClick={() => setShowAddDataModal(false)} type="button">
@@ -442,6 +458,7 @@ function App() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </main>
   );
@@ -818,8 +835,8 @@ function MintView({
           <section className="mint-page">
             <div className="mint-page-copy">
               <span>Step 01</span>
-              <h2>选择一次真实训练</h2>
-              <p>徽章从训练记录开始。每一次时长、拍数、速度和心率，都会成为螺旋结构中的一部分。</p>
+              <h2>选择你的训练</h2>
+              <p>徽章从训练记录开始。每一次时长、拍数、速度和心率，都会成为徽章的一部分。</p>
             </div>
             <div className="session-rail mint-session-rail" aria-label="数据源选择">
               {metrics.map((metric, index) => (
@@ -839,14 +856,14 @@ function MintView({
           <section className="mint-page">
             <div className="mint-page-copy">
               <span>Step 02</span>
-              <h2>数据开始变成图形</h2>
-              <p>你可以微调本次训练数据。系统会把数值映射为螺旋密度、延展、起伏和高光。</p>
+              <h2>数据化作图形</h2>
+              <p>你可以微调本次训练数据。数值会映射为密度、延展、起伏和高光。</p>
             </div>
             <div className="data-form mint-data-form">
               <label>
                 训练时间
                 <input type="datetime-local" value={mintForm.timestamp} onChange={(event) => updateMintForm("timestamp", event.target.value)} required />
-                <span>作为本次训练徽章的时间指纹</span>
+                <span>本次训练的时间指纹</span>
               </label>
               <label>
                 训练时长
@@ -886,7 +903,7 @@ function MintView({
             <div className="mint-page-copy">
               <span>Step 03</span>
               <h2>选择视觉语言</h2>
-              <p>选择颜色倾向和叠加元素。系统会把它们写入生成算法，形成不同的配色、几何图层和训练指纹。</p>
+              <p>选择颜色倾向和叠加元素。它们经由生成算法，形成不同的配色、几何图层和训练指纹。</p>
             </div>
             <div className="mint-choice-group">
               <label>色彩气质</label>
@@ -922,8 +939,8 @@ function MintView({
           <section className="mint-page">
             <div className="mint-page-copy">
               <span>Step 04</span>
-              <h2>选择并保存作品</h2>
-              <p>本次训练已经生成三种候选徽章。选择最能代表你这次状态的一枚，保存到个人画廊。</p>
+              <h2>挑选你的徽章</h2>
+              <p>本次训练已经生成三种徽章。选择与你状态最匹配的一枚，保存到个人画廊。</p>
             </div>
             <div className="mint-summary">
               <span>{selectedTone.label}</span>
@@ -1030,6 +1047,7 @@ function MintView({
       </Card>
 
       {candidates.length > 0 && (
+        <ModalPortal>
         <div className="badge-modal-overlay" onClick={() => setCandidates([])}>
           <div className="badge-modal-card badge-candidate-modal" onClick={(e) => e.stopPropagation()}>
             <button className="badge-modal-close" onClick={() => setCandidates([])} type="button">
@@ -1081,6 +1099,7 @@ function MintView({
             </button>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );
@@ -1380,11 +1399,18 @@ function MineView({
   }
 
   function handleSave() {
-    setToast("保存中...");
-    setTimeout(() => {
-      setToast("已成功保存至相册");
-      setTimeout(() => setToast(null), 2000);
-    }, 600);
+    if (!selectedBadge) return;
+    try {
+      const badgeToSave = commBadge ? communityBadgeToStoredBadge(commBadge) : storeBadge;
+      if (!badgeToSave) return;
+      saveBadgeToGallery(badgeToSave);
+      setBadges(readBadges());
+      setToast("已保存至本地画廊");
+    } catch (err) {
+      setToast(`保存失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      window.setTimeout(() => setToast(null), 2200);
+    }
   }
 
   function handleShare() {
@@ -1455,6 +1481,8 @@ function MineView({
             <div className="badge-hero-art">
               {"isCommunity" in heroBadge ? (
                 <img src={new URL(`./Pics/${heroBadge.imageName}`, import.meta.url).href} alt={heroBadge.name} />
+              ) : heroBadge.communityImageName ? (
+                <img src={new URL(`./Pics/${heroBadge.communityImageName}`, import.meta.url).href} alt={badgeTitle(heroBadge)} />
               ) : (
                 <BadgeMark badge={heroBadge} />
               )}
@@ -1515,7 +1543,13 @@ function MineView({
             <div className="badge-grid-single" aria-label="本地生成徽章">
               {visibleBadges.map((badge) => (
                 <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
-                  <BadgeMark badge={badge} />
+                  {badge.communityImageName ? (
+                    <div className="badge-community-img-wrap">
+                      <img src={new URL(`./Pics/${badge.communityImageName}`, import.meta.url).href} alt={badgeTitle(badge)} />
+                    </div>
+                  ) : (
+                    <BadgeMark badge={badge} />
+                  )}
                   <figcaption>
                     <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
                     <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
@@ -1562,6 +1596,7 @@ function MineView({
       )}
 
       {selectedBadge && (
+        <ModalPortal>
         <div className="badge-modal-overlay" onClick={() => setSelectedBadge(null)}>
           <div className="badge-modal-card" onClick={(e) => e.stopPropagation()}>
             <button className="badge-modal-close" onClick={() => setSelectedBadge(null)} type="button">
@@ -1570,7 +1605,7 @@ function MineView({
             <BadgeCoin badge={selectedBadge} />
             <div className="badge-modal-title">
               <h3>{commBadge ? commBadge.name : storeBadge && badgeTitle(storeBadge)}</h3>
-              <span>{commBadge ? `由 ${commBadge.creator} 创作的社区创意徽章` : "已铸造为独一无二 of 数字化训练徽章"}</span>
+              <span>{commBadge ? `由 ${commBadge.creator} 创作的社区创意徽章` : storeBadge?.communityCreator ? `由 ${storeBadge.communityCreator} 创作的社区创意徽章` : "已铸造数字化训练徽章"}</span>
             </div>
             <div className="badge-modal-stats">
               <div className="badge-modal-stat-item">
@@ -1601,7 +1636,7 @@ function MineView({
                 <label>峰值心率</label>
                 <span>{selectedBadge.peakHr || 155} bpm</span>
               </div>
-              {commBadge ? (
+              {commBadge || storeBadge?.communityImageName ? (
                 <div className="badge-modal-stat-item">
                   <label>来源</label>
                   <span>社区画廊</span>
@@ -1616,10 +1651,10 @@ function MineView({
               )}
             </div>
 
-            {commBadge && (
+            {(commBadge || storeBadge?.communityComment) && (
               <div className="badge-modal-comment">
-                <label>{commBadge.creator}</label>
-                <p>“{commBadge.comment}”</p>
+                <label>{commBadge ? commBadge.creator : storeBadge?.communityCreator}</label>
+                <p>“{commBadge ? commBadge.comment : storeBadge?.communityComment}”</p>
               </div>
             )}
 
@@ -1657,17 +1692,46 @@ function MineView({
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );
 }
 
 function badgeTitle(badge: StoredBadge) {
+  if (badge.communityName) return badge.communityName;
   if (badge.curveType === "ringsBlack" || badge.id.includes("hiddenBlack")) return "Obsidian Vector Flow Field";
   if (badge.curveType === "rings" || badge.id.includes("hidden")) return "Iridescent Vector Flow Field";
   if (badge.curveType === "parametric3d") return "Standard Vector Flow Field";
   if (badge.curveType === "2d") return "Gosper 2D";
   return "Z-Order 3D";
+}
+
+function communityBadgeToStoredBadge(badge: CommunityBadge): StoredBadge {
+  return {
+    id: `saved-${badge.id}`,
+    timestamp: badge.timestamp,
+    durationMin: badge.durationMin,
+    totalShots: badge.totalShots,
+    avgSpeed: badge.avgSpeed,
+    avgApex: badge.avgApex,
+    peakHr: badge.peakHr,
+    curveType: "parametric3d",
+    mergedPoints: [],
+    zorderPoints: [],
+    ringPanels: [],
+    colorStart: "hsl(154, 32%, 18%)",
+    colorEnd: "hsl(154, 18%, 52%)",
+    colorInverted: "rgb(255,255,255)",
+    invertedPos: 0.5,
+    strokeWidth: 1,
+    opacity: 1,
+    variation: 0,
+    communityImageName: badge.imageName,
+    communityName: badge.name,
+    communityCreator: badge.creator,
+    communityComment: badge.comment,
+  };
 }
 
 function matchesCollectionFilter(badge: StoredBadge, filter: CollectionFilter) {
@@ -1703,8 +1767,10 @@ function BadgeCoin({ badge }: { badge: StoredBadge | CommunityBadge }) {
   const [dragging, setDragging] = React.useState(false);
   const dragRef = React.useRef({ active: false, x: 0, y: 0, startX: -8, startY: 0 });
   const isCommunity = "isCommunity" in badge && badge.isCommunity;
-  const title = isCommunity ? badge.name : badgeTitle(badge as StoredBadge);
-  const subtitle = isCommunity ? (badge as CommunityBadge).creator : "Vidi Training NFT";
+  const storedBadge = badge as StoredBadge;
+  const communityImageName = isCommunity ? (badge as CommunityBadge).imageName : storedBadge.communityImageName;
+  const title = isCommunity ? badge.name : badgeTitle(storedBadge);
+  const subtitle = isCommunity ? (badge as CommunityBadge).creator : storedBadge.communityCreator ?? "Vidi Training NFT";
   const coinStyle = {
     "--coin-rx": `${rotation.x}deg`,
     "--coin-ry": `${rotation.y}deg`,
@@ -1752,11 +1818,18 @@ function BadgeCoin({ badge }: { badge: StoredBadge | CommunityBadge }) {
       aria-label={`${title} 双面纪念币`}
     >
       <div className="badge-coin-object">
+        <div className="badge-coin-edge" aria-hidden="true">
+          {Array.from({ length: 36 }, (_, index) => (
+            <span
+              key={index}
+              style={{ "--edge-angle": `${index * 10}deg` } as React.CSSProperties}
+            />
+          ))}
+        </div>
         <div className="badge-coin-face badge-coin-front">
-          <div className="badge-coin-face-glow" />
           <div className="badge-coin-art">
-            {isCommunity ? (
-              <img src={new URL(`./Pics/${(badge as CommunityBadge).imageName}`, import.meta.url).href} alt={title} />
+            {communityImageName ? (
+              <img src={new URL(`./Pics/${communityImageName}`, import.meta.url).href} alt={title} />
             ) : (
               <BadgeMark badge={badge as StoredBadge} />
             )}
@@ -2199,7 +2272,11 @@ function isStoredBadge(value: unknown): value is StoredBadge {
     typeof v.strokeWidth === "number" &&
     typeof v.opacity === "number" &&
     typeof v.variation === "number" &&
-    (v.sessionId === undefined || typeof v.sessionId === "string")
+    (v.sessionId === undefined || typeof v.sessionId === "string") &&
+    (v.communityImageName === undefined || typeof v.communityImageName === "string") &&
+    (v.communityName === undefined || typeof v.communityName === "string") &&
+    (v.communityCreator === undefined || typeof v.communityCreator === "string") &&
+    (v.communityComment === undefined || typeof v.communityComment === "string")
   );
 }
 
