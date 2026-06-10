@@ -127,6 +127,27 @@ const navItems = [
 ] as const;
 
 type ViewId = (typeof navItems)[number]["id"];
+const communityImageUrls: Record<string, string> = {
+  "ball.png": new URL("./Pics/ball.png", import.meta.url).href,
+  "burst.png": new URL("./Pics/burst.png", import.meta.url).href,
+  "burst-1.png": new URL("./Pics/burst-1.png", import.meta.url).href,
+  "clay.png": new URL("./Pics/clay.png", import.meta.url).href,
+  "clay-1.png": new URL("./Pics/clay-1.png", import.meta.url).href,
+  "clay-2.png": new URL("./Pics/clay-2.png", import.meta.url).href,
+  "core.png": new URL("./Pics/core.png", import.meta.url).href,
+  "midnight.png": new URL("./Pics/midnight.png", import.meta.url).href,
+  "midnight-2.png": new URL("./Pics/midnight-2.png", import.meta.url).href,
+  "morning.png": new URL("./Pics/morning.png", import.meta.url).href,
+  "mount.png": new URL("./Pics/mount.png", import.meta.url).href,
+  "sonic.png": new URL("./Pics/sonic.png", import.meta.url).href,
+  "sonic-1.png": new URL("./Pics/sonic-1.png", import.meta.url).href,
+  "sonic-3.png": new URL("./Pics/sonic-3.png", import.meta.url).href,
+};
+
+function communityImageUrl(imageName: string | undefined) {
+  return imageName ? communityImageUrls[imageName] : undefined;
+}
+
 type CollectionFilter = "all" | "warm" | "cool" | "mono" | "standard" | "iridescent" | "obsidian";
 type MintStep = "session" | "data" | "visual" | "preview";
 type VisualTone = "classic" | "clay" | "electric";
@@ -1262,20 +1283,6 @@ const communityBadges: CommunityBadge[] = [
     isCommunity: true,
   },
   {
-    id: "comm-11",
-    name: "Sunrise Aura",
-    imageName: "morning-2.png",
-    creator: "@DawnPlayer",
-    comment: "朝阳映射在旋转的网球上，拉出金黄色的弧线，充满了崭新一天的活力。",
-    timestamp: 1779504000000,
-    durationMin: 85,
-    totalShots: 1600,
-    avgSpeed: 71,
-    avgApex: 1.9,
-    peakHr: 154,
-    isCommunity: true,
-  },
-  {
     id: "comm-12",
     name: "Alpine Apex",
     imageName: "mount.png",
@@ -1398,6 +1405,21 @@ function MineView({
     });
   }
 
+  function handleDeleteBadge(badgeId: string) {
+    const nextBadges = readBadges().filter((badge) => badge.id !== badgeId);
+    localStorage.setItem(badgeStorageKey, JSON.stringify(nextBadges));
+    setBadges(nextBadges);
+    setFeaturedBadgeIds((current) => {
+      if (!current.includes(badgeId)) return current;
+      const nextFeatured = current.filter((id) => id !== badgeId);
+      localStorage.setItem(featuredBadgeStorageKey, JSON.stringify(nextFeatured));
+      return nextFeatured;
+    });
+    if (selectedBadge?.id === badgeId) {
+      setSelectedBadge(null);
+    }
+  }
+
   function handleSave() {
     if (!selectedBadge) return;
     try {
@@ -1480,9 +1502,9 @@ function MineView({
           <button className="badge-hero-stage" onClick={() => setSelectedBadge(heroBadge)} type="button">
             <div className="badge-hero-art">
               {"isCommunity" in heroBadge ? (
-                <img src={new URL(`./Pics/${heroBadge.imageName}`, import.meta.url).href} alt={heroBadge.name} />
+                <img src={communityImageUrl(heroBadge.imageName)} alt={heroBadge.name} />
               ) : heroBadge.communityImageName ? (
-                <img src={new URL(`./Pics/${heroBadge.communityImageName}`, import.meta.url).href} alt={badgeTitle(heroBadge)} />
+                <img src={communityImageUrl(heroBadge.communityImageName)} alt={badgeTitle(heroBadge)} />
               ) : (
                 <BadgeMark badge={heroBadge} />
               )}
@@ -1545,7 +1567,7 @@ function MineView({
                 <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
                   {badge.communityImageName ? (
                     <div className="badge-community-img-wrap">
-                      <img src={new URL(`./Pics/${badge.communityImageName}`, import.meta.url).href} alt={badgeTitle(badge)} />
+                      <img src={communityImageUrl(badge.communityImageName)} alt={badgeTitle(badge)} />
                     </div>
                   ) : (
                     <BadgeMark badge={badge} />
@@ -1554,16 +1576,28 @@ function MineView({
                     <strong>{new Date(badge.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>
                     <span>{new Date(badge.timestamp).toLocaleDateString("zh-CN")}</span>
                   </figcaption>
-                  <button
-                    className={`badge-feature-toggle${featuredBadgeIds.includes(badge.id) ? " active" : ""}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleFeaturedBadge(badge.id);
-                    }}
-                    type="button"
-                  >
-                    {featuredBadgeIds.includes(badge.id) ? "首页轮播中" : "加入首页轮播"}
-                  </button>
+                  <div className="badge-tile-actions">
+                    <button
+                      className={`badge-feature-toggle${featuredBadgeIds.includes(badge.id) ? " active" : ""}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFeaturedBadge(badge.id);
+                      }}
+                      type="button"
+                    >
+                      {featuredBadgeIds.includes(badge.id) ? "首页轮播中" : "加入首页轮播"}
+                    </button>
+                    <button
+                      className="badge-delete-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteBadge(badge.id);
+                      }}
+                      type="button"
+                    >
+                      删除本徽章
+                    </button>
+                  </div>
                 </figure>
               ))}
             </div>
@@ -1584,7 +1618,7 @@ function MineView({
           {communityBadges.map((badge) => (
             <figure key={badge.id} className="badge-tile" onClick={() => setSelectedBadge(badge)} style={{ cursor: "pointer" }}>
               <div className="badge-community-img-wrap">
-                <img src={new URL(`./Pics/${badge.imageName}`, import.meta.url).href} alt={badge.name} />
+                <img src={communityImageUrl(badge.imageName)} alt={badge.name} />
               </div>
               <figcaption>
                 <strong>{badge.name}</strong>
@@ -1675,10 +1709,12 @@ function MineView({
               </div>
             )}
 
-            <button className="badge-modal-jump-btn" onClick={handleJumpToData} type="button">
-              <LineChart size={16} />
-              <span>查看该场数据</span>
-            </button>
+            {!(commBadge || storeBadge?.communityImageName) && (
+              <button className="badge-modal-jump-btn" onClick={handleJumpToData} type="button">
+                <LineChart size={16} />
+                <span>查看该场数据</span>
+              </button>
+            )}
 
             <div className="badge-modal-actions">
               <button className="secondary" onClick={handleSave} type="button">
@@ -1829,7 +1865,7 @@ function BadgeCoin({ badge }: { badge: StoredBadge | CommunityBadge }) {
         <div className="badge-coin-face badge-coin-front">
           <div className="badge-coin-art">
             {communityImageName ? (
-              <img src={new URL(`./Pics/${communityImageName}`, import.meta.url).href} alt={title} />
+              <img src={communityImageUrl(communityImageName)} alt={title} />
             ) : (
               <BadgeMark badge={badge as StoredBadge} />
             )}
